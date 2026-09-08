@@ -1,0 +1,4 @@
+# Yerel klon (LEGACY_UNREAL=1 ile olusur)
+tools/unreal-mcp/
+# Claude Code yerel ayarlari
+.claude/settings.local.json

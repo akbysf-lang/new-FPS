@@ -1,0 +1,22 @@
+{
+  "_comment": "UE 5.5 - 5.7 icin (yerlesik MCP eklentisi olmayan surumler). Kullanmak icin: cp .mcp.unreal-legacy.json .mcp.json ve UNREAL_MCP_DIR yolunu duzenle. UE 5.8+ icin .mcp.json dosyasindaki yerlesik HTTP sunucusu yeterlidir.",
+  "mcpServers": {
+    "blender": {
+      "command": "uvx",
+      "args": ["blender-mcp"],
+      "env": {
+        "BLENDER_HOST": "127.0.0.1",
+        "BLENDER_PORT": "9876"
+      }
+    },
+    "unreal": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${UNREAL_MCP_DIR}/Python",
+        "run",
+        "unreal_mcp_server.py"
+      ]
+    }
+  }
+}
