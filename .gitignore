@@ -2,3 +2,25 @@
 tools/unreal-mcp/
 # Claude Code yerel ayarlari
 .claude/settings.local.json
+
+# Unreal Engine
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.sdf
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.xcodeproj
+*.xcworkspace
+*.code-workspace
+*.DotSettings.user
+.DS_Store
