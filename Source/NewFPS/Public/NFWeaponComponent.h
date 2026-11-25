@@ -118,6 +118,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	bool IsTriggerHeld() const { return bTriggerHeld; }
 
+	/**
+	 * External lock (e.g. standing waist deep in the tide). Not replicated: the caller sets it on every
+	 * machine from state both sides can compute. A blocked weapon neither fires nor accepts remote shots.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void SetFireBlocked(bool bNewBlocked) { bFireBlocked = bNewBlocked; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon")
+	bool IsFireBlocked() const { return bFireBlocked; }
+
 	/** 0 = hip, 1 = fully aimed. */
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	float GetAdsAlpha() const { return AdsAlpha; }
@@ -261,6 +271,7 @@ private:
 	int32 AmmoInMagazine = 0;
 	int32 ReserveAmmo = 0;
 
+	bool bFireBlocked = false;
 	bool bTriggerHeld = false;
 	bool bSemiShotPending = false;
 	bool bDryFiredThisPress = false;

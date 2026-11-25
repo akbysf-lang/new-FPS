@@ -1,4 +1,7 @@
 #include "NFCharacterMovementComponent.h"
+#include "NFTideData.h"
+#include "NFTideManager.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
 #include "GameFramework/Character.h"
 
@@ -10,19 +13,43 @@ float UNFCharacterMovementComponent::GetMaxSpeed() const
 	{
 		return BaseSpeed;
 	}
+
+	// Evaluated the same way by client prediction, client replay and the server.
+	const float WaterMultiplier = GetWaterSpeedMultiplier();
+
 	if (IsCrouching())
 	{
-		return BaseSpeed;
+		return BaseSpeed * WaterMultiplier;
 	}
 	if (IsSprinting())
 	{
-		return SprintSpeed;
+		return SprintSpeed * WaterMultiplier;
 	}
 	if (bWantsToAimWalk)
 	{
-		return BaseSpeed * AimWalkSpeedMultiplier;
+		return BaseSpeed * AimWalkSpeedMultiplier * WaterMultiplier;
 	}
-	return BaseSpeed;
+	return BaseSpeed * WaterMultiplier;
+}
+
+float UNFCharacterMovementComponent::GetWaterSpeedMultiplier() const
+{
+	if (!bWaterSlowsMovement || !CharacterOwner || !UpdatedComponent)
+	{
+		return 1.f;
+	}
+
+	const ANFTideManager* TideManager = ANFTideManager::Get(GetWorld());
+	if (!TideManager)
+	{
+		return 1.f;
+	}
+
+	// UpdatedComponent, not the actor: during a client replay this is the replayed position.
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const float FeetZ = static_cast<float>(Location.Z) - CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float Depth = TideManager->GetWaterZAt(Location) - FeetZ;
+	return TideManager->GetTideData()->GetSpeedMultiplierForDepth(Depth);
 }
 
 bool UNFCharacterMovementComponent::IsSprinting() const

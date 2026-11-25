@@ -302,7 +302,7 @@ void UNFWeaponComponent::ServerSetAiming_Implementation(bool bNewAiming)
 
 bool UNFWeaponComponent::CanFire() const
 {
-	return !bReloading && AmmoInMagazine > 0 && !IsOwnerDead();
+	return !bFireBlocked && !bReloading && AmmoInMagazine > 0 && !IsOwnerDead();
 }
 
 bool UNFWeaponComponent::WantsShot() const
@@ -347,7 +347,7 @@ void UNFWeaponComponent::HandleCannotFire()
 {
 	bSemiShotPending = false;
 
-	if (bReloading || AmmoInMagazine > 0 || IsOwnerDead())
+	if (bFireBlocked || bReloading || AmmoInMagazine > 0 || IsOwnerDead())
 	{
 		return;
 	}
@@ -457,6 +457,12 @@ void UNFWeaponComponent::AuthProcessShot(const FNFShotData& Shot, bool bFromRemo
 
 	if (bFromRemoteClient)
 	{
+		if (bFireBlocked)
+		{
+			UE_LOG(LogNewFPS, Verbose, TEXT("Shot rejected (%s): weapon blocked"), *GetNameSafe(OwnerPawn));
+			return;
+		}
+
 		if (bReloading || AmmoInMagazine <= 0)
 		{
 			UE_LOG(LogNewFPS, Verbose, TEXT("Shot rejected (%s): reloading=%d ammo=%d"), *GetNameSafe(OwnerPawn), bReloading ? 1 : 0, AmmoInMagazine);

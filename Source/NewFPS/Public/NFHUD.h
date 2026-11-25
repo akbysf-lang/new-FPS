@@ -7,7 +7,7 @@
 
 class UNFWeaponComponent;
 
-/** Minimal Canvas HUD: spread crosshair, ammo, health and hit marker. No UMG assets required. */
+/** Minimal Canvas HUD: spread crosshair, ammo, health, hit marker and tide clock. No UMG assets required. */
 UCLASS()
 class NEWFPS_API ANFHUD : public AHUD
 {
@@ -41,7 +41,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "NewFPS|HitMarker")
 	FLinearColor KillMarkerColor = FLinearColor(1.f, 0.15f, 0.1f);
 
+	UPROPERTY(EditDefaultsOnly, Category = "NewFPS|Tide")
+	FLinearColor TideTextColor = FLinearColor(0.75f, 0.9f, 1.f);
+
+	/** Used for the tide line while the water is rising and for wetness warnings. */
+	UPROPERTY(EditDefaultsOnly, Category = "NewFPS|Tide")
+	FLinearColor TideAlertColor = FLinearColor(1.f, 0.55f, 0.1f);
+
 private:
+	void DrawTide(const APawn* ViewedPawn);
+
 	UFUNCTION()
 	void HandleHitConfirmed(AActor* HitActor, float Damage, ENFHitZone Zone, bool bKilled);
 

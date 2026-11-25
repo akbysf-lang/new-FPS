@@ -15,6 +15,33 @@ enum class ENFHitZone : uint8
 	Limb
 };
 
+/** How deep an actor stands in the tide. Ordered: a higher value is always wetter. */
+UENUM(BlueprintType)
+enum class ENFWetness : uint8
+{
+	Dry,
+	/** Knee deep: movement slows down. */
+	Knee,
+	/** Waist/chest deep: weapons cannot be used (players), automatons short out (AI). */
+	Waist,
+	/** Head under water: drowning. */
+	Overhead
+};
+
+/** Label of a tide table entry. The water height itself comes from the entry's start/end levels. */
+UENUM(BlueprintType)
+enum class ENFTidePhase : uint8
+{
+	/** Slack at low water. */
+	LowSlack,
+	/** Water rising. */
+	Flood,
+	/** Slack at high water. */
+	HighSlack,
+	/** Water falling. */
+	Ebb
+};
+
 /** Everything the single damage pipeline (UNFHealthComponent::ApplyDamage) needs. */
 USTRUCT(BlueprintType)
 struct FNFDamageInfo

@@ -4,8 +4,10 @@
 #include "NFGameMode.h"
 #include "NFHealthComponent.h"
 #include "NFMovementData.h"
+#include "NFTideData.h"
 #include "NFWeaponComponent.h"
 #include "NFWeaponData.h"
+#include "NFWetnessComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -22,6 +24,7 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
+#include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace NFCharacter
@@ -85,6 +88,7 @@ ANFCharacter::ANFCharacter(const FObjectInitializer& ObjectInitializer)
 
 	WeaponComponent = CreateDefaultSubobject<UNFWeaponComponent>(TEXT("WeaponComponent"));
 	HealthComponent = CreateDefaultSubobject<UNFHealthComponent>(TEXT("HealthComponent"));
+	WetnessComponent = CreateDefaultSubobject<UNFWetnessComponent>(TEXT("WetnessComponent"));
 
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
 }
@@ -104,6 +108,10 @@ void ANFCharacter::PostInitializeComponents()
 	{
 		// Bound before BeginPlay so an already-loaded weapon is not missed.
 		WeaponComponent->OnVisualsReady.AddUObject(this, &ANFCharacter::HandleWeaponVisualsReady);
+	}
+	if (WetnessComponent)
+	{
+		WetnessComponent->OnWetnessChanged.AddUniqueDynamic(this, &ANFCharacter::HandleWetnessChanged);
 	}
 }
 
@@ -232,6 +240,7 @@ void ANFCharacter::HandleDeath(UNFHealthComponent* InHealthComponent, AControlle
 		WeaponComponent->SetAiming(false);
 	}
 	bSprintHeld = false;
+	GetWorldTimerManager().ClearTimer(DrownTimerHandle);
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetCharacterMovement()->DisableMovement();
@@ -261,6 +270,64 @@ void ANFCharacter::HandleDeath(UNFHealthComponent* InHealthComponent, AControlle
 			GameMode->NotifyPlayerDied(GetController(), Killer);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tide / wetness
+// ---------------------------------------------------------------------------------------------
+
+void ANFCharacter::HandleWetnessChanged(UNFWetnessComponent* InWetnessComponent, ENFWetness NewWetness, ENFWetness OldWetness)
+{
+	// Runs on every machine from the same deterministic water height, so nothing here needs an RPC.
+	// The speed penalty is not applied here: UNFCharacterMovementComponent::GetMaxSpeed reads the depth itself.
+	const UNFTideData* TideData = InWetnessComponent->GetTideData();
+
+	const bool bWeaponBlocked = NewWetness >= TideData->WeaponsDisabledFrom;
+	if (WeaponComponent)
+	{
+		WeaponComponent->SetFireBlocked(bWeaponBlocked);
+		if (bWeaponBlocked)
+		{
+			WeaponComponent->SetAiming(false);
+		}
+	}
+
+	if (HasAuthority())
+	{
+		FTimerManager& TimerManager = GetWorldTimerManager();
+		if (NewWetness == ENFWetness::Overhead)
+		{
+			if (!TimerManager.IsTimerActive(DrownTimerHandle))
+			{
+				TimerManager.SetTimer(DrownTimerHandle, this, &ANFCharacter::ApplyDrownDamage,
+					FMath::Max(TideData->DrownDamageInterval, 0.1f), true, FMath::Max(TideData->DrownGraceSeconds, 0.f));
+			}
+		}
+		else
+		{
+			TimerManager.ClearTimer(DrownTimerHandle);
+		}
+	}
+}
+
+void ANFCharacter::ApplyDrownDamage()
+{
+	if (!HealthComponent || HealthComponent->IsDead() || !WetnessComponent)
+	{
+		GetWorldTimerManager().ClearTimer(DrownTimerHandle);
+		return;
+	}
+
+	FNFDamageInfo DamageInfo;
+	DamageInfo.BaseDamage = WetnessComponent->GetTideData()->DrownDamagePerInterval;
+	DamageInfo.HitLocation = GetActorLocation();
+	DamageInfo.ShotDirection = FVector::UpVector;
+	HealthComponent->ApplyDamage(DamageInfo);
+}
+
+bool ANFCharacter::IsWeaponBlockedByWater() const
+{
+	return WeaponComponent && WeaponComponent->IsFireBlocked();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -361,16 +428,17 @@ void ANFCharacter::BuildFallbackInput()
 		return true;
 	};
 
-	const bool bCreatedAny =
-		  EnsureAction(MoveAction, TEXT("IA_Fallback_Move"), EInputActionValueType::Axis2D)
-		| EnsureAction(LookAction, TEXT("IA_Fallback_Look"), EInputActionValueType::Axis2D)
-		| EnsureAction(LookStickAction, TEXT("IA_Fallback_LookStick"), EInputActionValueType::Axis2D)
-		| EnsureAction(JumpAction, TEXT("IA_Fallback_Jump"), EInputActionValueType::Boolean)
-		| EnsureAction(CrouchAction, TEXT("IA_Fallback_Crouch"), EInputActionValueType::Boolean)
-		| EnsureAction(SprintAction, TEXT("IA_Fallback_Sprint"), EInputActionValueType::Boolean)
-		| EnsureAction(FireAction, TEXT("IA_Fallback_Fire"), EInputActionValueType::Boolean)
-		| EnsureAction(AimAction, TEXT("IA_Fallback_Aim"), EInputActionValueType::Boolean)
-		| EnsureAction(ReloadAction, TEXT("IA_Fallback_Reload"), EInputActionValueType::Boolean);
+	// Each call has a side effect, so they are separate statements (clang rejects bool | bool here).
+	bool bCreatedAny = false;
+	bCreatedAny |= EnsureAction(MoveAction, TEXT("IA_Fallback_Move"), EInputActionValueType::Axis2D);
+	bCreatedAny |= EnsureAction(LookAction, TEXT("IA_Fallback_Look"), EInputActionValueType::Axis2D);
+	bCreatedAny |= EnsureAction(LookStickAction, TEXT("IA_Fallback_LookStick"), EInputActionValueType::Axis2D);
+	bCreatedAny |= EnsureAction(JumpAction, TEXT("IA_Fallback_Jump"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(CrouchAction, TEXT("IA_Fallback_Crouch"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(SprintAction, TEXT("IA_Fallback_Sprint"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(FireAction, TEXT("IA_Fallback_Fire"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(AimAction, TEXT("IA_Fallback_Aim"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(ReloadAction, TEXT("IA_Fallback_Reload"), EInputActionValueType::Boolean);
 
 	if (!bBuildMappings)
 	{
@@ -524,7 +592,7 @@ void ANFCharacter::Input_FireCompleted()
 
 void ANFCharacter::Input_AimStarted()
 {
-	if (WeaponComponent)
+	if (WeaponComponent && !IsWeaponBlockedByWater())
 	{
 		WeaponComponent->SetAiming(true);
 	}

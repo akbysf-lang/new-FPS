@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "NFTypes.h"
 #include "NFCharacter.generated.h"
 
 class UCameraComponent;
@@ -11,6 +12,7 @@ class UNFCharacterMovementComponent;
 class UNFHealthComponent;
 class UNFMovementData;
 class UNFWeaponComponent;
+class UNFWetnessComponent;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 struct FInputActionValue;
@@ -41,7 +43,14 @@ public:
 	UNFHealthComponent* GetHealthComponent() const { return HealthComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	UNFWetnessComponent* GetWetnessComponent() const { return WetnessComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
 	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
+
+	/** Water is at or above the depth where weapons stop working (UNFTideData::WeaponsDisabledFrom). */
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	bool IsWeaponBlockedByWater() const;
 
 protected:
 	// ---- Components ----
@@ -70,6 +79,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UNFHealthComponent> HealthComponent;
+
+	/** How deep the character stands in the tide. Evaluated locally on every machine; not replicated. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UNFWetnessComponent> WetnessComponent;
 
 	// ---- Data ----
 
@@ -153,6 +166,12 @@ private:
 	UFUNCTION()
 	void HandleDeath(UNFHealthComponent* InHealthComponent, AController* Killer);
 
+	UFUNCTION()
+	void HandleWetnessChanged(UNFWetnessComponent* InWetnessComponent, ENFWetness NewWetness, ENFWetness OldWetness);
+
+	/** Server only, on a timer while the head is under water. */
+	void ApplyDrownDamage();
+
 	void Input_Move(const FInputActionValue& Value);
 	void Input_Look(const FInputActionValue& Value);
 	void Input_LookStick(const FInputActionValue& Value);
@@ -171,6 +190,7 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UNFCharacterMovementComponent> NFMovement;
 
+	FTimerHandle DrownTimerHandle;
 	bool bSprintHeld = false;
 	float CrouchEyeOffset = 0.f;
 };

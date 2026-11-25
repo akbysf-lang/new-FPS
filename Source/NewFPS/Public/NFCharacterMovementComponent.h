@@ -8,6 +8,9 @@
  * Character movement with two extra predicted states: sprint and aim-walk.
  * They travel inside the saved-move compressed flags (not RPCs), so client prediction and
  * server simulation always agree on the max speed.
+ *
+ * Wading in the tide also scales the max speed. That needs no flag at all: the multiplier is a pure function
+ * of the character's position (part of every move) and the deterministic water height (see ANFTideManager).
  */
 UCLASS()
 class NEWFPS_API UNFCharacterMovementComponent : public UCharacterMovementComponent
@@ -27,6 +30,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character Movement: Walking", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float AimWalkSpeedMultiplier = 0.6f;
+
+	/** Speed multiplier from the water depth at the feet right now (1 = dry or no tide in the level). */
+	UFUNCTION(BlueprintPure, Category = "Movement")
+	float GetWaterSpeedMultiplier() const;
+
+	/** Off for things that are not slowed by water. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Character Movement: Walking")
+	bool bWaterSlowsMovement = true;
 
 	/** Set by the owning client every frame; replicated to the server through compressed flags. */
 	uint8 bWantsToSprint : 1;
