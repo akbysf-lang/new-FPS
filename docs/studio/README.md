@@ -47,8 +47,8 @@ Agent tanımları oturum açılışında yüklenir; yeni eklenen agent'lar bir s
 | Ekip kurulumu ve eğitim | Tamamlandı |
 | 1. Keşif: pazar araştırması | [design/market-research.md](design/market-research.md) |
 | 1. Keşif: hikâye taslağı | [design/game-story.md](design/game-story.md) |
-| 2. Konsept onayı | Kullanıcı kararı bekleniyor |
-| 3. Prototip | Başlamadı |
+| 2. Konsept | Designer önerisi: **EBBSHIFT** (co-op PvE, gelgit saati). Varsayılan olarak ilerleniyor; kullanıcı değiştirebilir |
+| 3. Prototip | Başladı: UE5 C++ çekirdek iskeleti, prototip spesifikasyonu, stil rehberi |
 
 ## Klasörler
 
