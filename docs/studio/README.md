@@ -48,7 +48,7 @@ Agent tanımları oturum açılışında yüklenir; yeni eklenen agent'lar bir s
 | 1. Keşif: pazar araştırması | [design/market-research.md](design/market-research.md) |
 | 1. Keşif: hikâye taslağı | [design/game-story.md](design/game-story.md) |
 | 2. Konsept | Designer önerisi: **EBBSHIFT** (co-op PvE, gelgit saati). Varsayılan olarak ilerleniyor; kullanıcı değiştirebilir |
-| 3. Prototip | Başladı: UE5 C++ çekirdek iskeleti, prototip spesifikasyonu, stil rehberi |
+| 3. Prototip | Kod yazıldı, **derlenmedi**: çekirdek, gelgit, iki silah, kanca, ganimet taşıma, iki düşman ([kurulum](tech/prototype-setup.md), [spesifikasyon](design/prototype-spec.md), [ADR](tech/adr-001-tide-and-network.md)). Sanat: [stil rehberi](art/style-guide.md), [varlık spesifikasyonu](art/weapon-character-specs.md). Sıradaki: kullanıcının makinesinde ilk derleme; Blender/Unreal bağlantısı |
 
 ## Klasörler
 

@@ -5,9 +5,13 @@
 #include "NFTypes.h"
 #include "NFHUD.generated.h"
 
+class ANFCharacter;
 class UNFWeaponComponent;
 
-/** Minimal Canvas HUD: spread crosshair, ammo, health, hit marker and tide clock. No UMG assets required. */
+/**
+ * Minimal Canvas HUD: spread crosshair, weapon and ammo, health / downed timer, hit marker, tide clock,
+ * strongbox counter and interaction progress. No UMG assets required.
+ */
 UCLASS()
 class NEWFPS_API ANFHUD : public AHUD
 {
@@ -50,6 +54,7 @@ protected:
 
 private:
 	void DrawTide(const APawn* ViewedPawn);
+	void DrawMission(const ANFCharacter* ViewedCharacter);
 
 	UFUNCTION()
 	void HandleHitConfirmed(AActor* HitActor, float Damage, ENFHitZone Zone, bool bKilled);

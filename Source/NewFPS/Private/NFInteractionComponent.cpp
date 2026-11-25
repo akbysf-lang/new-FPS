@@ -274,12 +274,12 @@ bool UNFInteractionComponent::AuthIsInteractionStillValid() const
 	{
 	case ENFInteraction::PickUp:
 	{
-		const ANFStrongbox* Box = Cast<ANFStrongbox>(InteractionTarget);
+		const ANFStrongbox* Box = Cast<ANFStrongbox>(InteractionTarget.Get());
 		return Box && Box->CanBePickedUp() && !CarriedBox;
 	}
 	case ENFInteraction::Revive:
 	{
-		const ANFCharacter* Teammate = Cast<ANFCharacter>(InteractionTarget);
+		const ANFCharacter* Teammate = Cast<ANFCharacter>(InteractionTarget.Get());
 		return Teammate && Teammate->GetLifeState() == ENFLifeState::Downed;
 	}
 	default:
@@ -313,7 +313,7 @@ void UNFInteractionComponent::AuthCompleteInteraction()
 {
 	ANFCharacter* Owner = GetNFOwner();
 	const ENFInteraction Finished = ActiveInteraction;
-	AActor* Target = InteractionTarget;
+	AActor* Target = InteractionTarget.Get();
 	AuthSetInteraction(ENFInteraction::None, nullptr, 0.f);
 
 	if (!Owner || !Target)
@@ -353,7 +353,7 @@ void UNFInteractionComponent::AuthDropCarried()
 		return;
 	}
 
-	ANFStrongbox* Box = CarriedBox;
+	ANFStrongbox* Box = CarriedBox.Get();
 	CarriedBox = nullptr;
 
 	// Put it down just in front of the carrier, on whatever floor is there. Never thrown.

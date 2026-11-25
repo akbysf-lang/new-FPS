@@ -1,7 +1,12 @@
 #include "NFHUD.h"
+#include "NFCharacter.h"
+#include "NFGameState.h"
 #include "NFHealthComponent.h"
+#include "NFInteractionComponent.h"
+#include "NFTideData.h"
 #include "NFTideManager.h"
 #include "NFWeaponComponent.h"
+#include "NFWeaponData.h"
 #include "NFWetnessComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/Canvas.h"
@@ -59,6 +64,7 @@ void ANFHUD::DrawHUD()
 
 	const UNFHealthComponent* Health = UNFHealthComponent::FindHealthComponent(Pawn);
 	const bool bAlive = Pawn && (!Health || !Health->IsDead());
+	const ANFCharacter* ViewedCharacter = Cast<ANFCharacter>(Pawn);
 
 	if (Weapon && bAlive)
 	{
@@ -86,23 +92,55 @@ void ANFHUD::DrawHUD()
 		DrawRect(CrosshairColor, CenterX - 1.f, CenterY - 1.f, 2.f, 2.f);
 
 		const int32 Reserve = Weapon->GetReserveAmmo();
-		const FString AmmoText = Weapon->IsReloading()
-			? FString(TEXT("RELOADING"))
-			: (Reserve < 0
-				? FString::Printf(TEXT("%d / INF"), Weapon->GetAmmoInMagazine())
-				: FString::Printf(TEXT("%d / %d"), Weapon->GetAmmoInMagazine(), Reserve));
-		DrawText(AmmoText, FLinearColor::White, Canvas->ClipX - 220.f, Canvas->ClipY - 80.f, nullptr, 2.f);
+		FString AmmoText;
+		if (Weapon->IsReloading())
+		{
+			AmmoText = TEXT("RELOADING");
+		}
+		else if (Weapon->IsSwitching())
+		{
+			AmmoText = TEXT("...");
+		}
+		else if (Reserve < 0)
+		{
+			AmmoText = FString::Printf(TEXT("%d / INF"), Weapon->GetAmmoInMagazine());
+		}
+		else
+		{
+			AmmoText = FString::Printf(TEXT("%d / %d"), Weapon->GetAmmoInMagazine(), Reserve);
+		}
+
+		// A firearm the water or the strongbox has taken out of play is shown greyed.
+		const FLinearColor WeaponColor = Weapon->IsFirearmUnusable() ? FLinearColor(0.5f, 0.5f, 0.5f) : FLinearColor::White;
+		DrawText(Weapon->GetData()->DisplayName.ToString().ToUpper(), WeaponColor, Canvas->ClipX - 220.f, Canvas->ClipY - 112.f, nullptr, 1.5f);
+		DrawText(AmmoText, WeaponColor, Canvas->ClipX - 220.f, Canvas->ClipY - 80.f, nullptr, 2.f);
 	}
 
 	if (Health)
 	{
-		const FString HealthText = Health->IsDead()
-			? FString(TEXT("DEAD"))
-			: FString::Printf(TEXT("HP %d"), FMath::CeilToInt(Health->GetHealth()));
-		DrawText(HealthText, Health->IsDead() ? FLinearColor::Red : FLinearColor::White, 60.f, Canvas->ClipY - 80.f, nullptr, 2.f);
+		FString HealthText = FString::Printf(TEXT("HP %d"), FMath::CeilToInt(Health->GetHealth()));
+		FLinearColor HealthColor = FLinearColor::White;
+		if (ViewedCharacter && ViewedCharacter->GetLifeState() == ENFLifeState::Downed)
+		{
+			const int32 SecondsLeft = FMath::CeilToInt(ViewedCharacter->GetBleedoutRemaining());
+			HealthText = FString::Printf(TEXT("DOWNED  %d:%02d"), SecondsLeft / 60, SecondsLeft % 60);
+			HealthColor = FLinearColor::Red;
+		}
+		else if (ViewedCharacter && ViewedCharacter->GetLifeState() == ENFLifeState::Out)
+		{
+			HealthText = TEXT("HAULED UP - WAIT FOR THE LINE");
+			HealthColor = FLinearColor::Red;
+		}
+		else if (Health->IsDead())
+		{
+			HealthText = TEXT("DEAD");
+			HealthColor = FLinearColor::Red;
+		}
+		DrawText(HealthText, HealthColor, 60.f, Canvas->ClipY - 80.f, nullptr, 2.f);
 	}
 
 	DrawTide(Pawn);
+	DrawMission(ViewedCharacter);
 
 	if (Now < HitMarkerEndTime)
 	{
@@ -133,7 +171,8 @@ void ANFHUD::DrawTide(const APawn* ViewedPawn)
 
 	if (Sample.bValid)
 	{
-		const int32 SecondsLeft = FMath::CeilToInt(Sample.PhaseRemaining);
+		// Time until the tide turns (the label changes), not until the next table entry.
+		const int32 SecondsLeft = FMath::CeilToInt(Sample.LabelRemaining);
 		const FString TideText = TideManager->IsTideRunning()
 			? FString::Printf(TEXT("%s  %d:%02d"), ANFTideManager::GetPhaseLabel(Sample.Phase), SecondsLeft / 60, SecondsLeft % 60)
 			: FString::Printf(TEXT("%s  (HELD)"), ANFTideManager::GetPhaseLabel(Sample.Phase));
@@ -150,7 +189,10 @@ void ANFHUD::DrawTide(const APawn* ViewedPawn)
 			WetnessText = TEXT("WADING");
 			break;
 		case ENFWetness::Waist:
-			WetnessText = TEXT("TOO DEEP TO SHOOT");
+			// Spec 3.3: the firearm lock is the chest depth (135 cm), not the Waist state (100 cm).
+			WetnessText = Wetness->GetWaterDepth() >= Wetness->GetTideData()->ChestDepth
+				? TEXT("TOO DEEP TO SHOOT")
+				: TEXT("WAIST DEEP - PURSER FROM THE HIP ONLY");
 			break;
 		case ENFWetness::Overhead:
 			WetnessText = TEXT("UNDER WATER");
@@ -170,5 +212,51 @@ void ANFHUD::DrawTide(const APawn* ViewedPawn)
 		const FString DebugText = FString::Printf(TEXT("water Z %.1f  level %.3f  tide t %.2f  depth %.0f"),
 			TideManager->GetGlobalWaterZ(), Sample.Level, TideManager->GetElapsedSeconds(), Wetness ? Wetness->GetWaterDepth() : 0.f);
 		DrawText(DebugText, FLinearColor::White, TextX, 104.f, nullptr, 1.f);
+	}
+}
+
+void ANFHUD::DrawMission(const ANFCharacter* ViewedCharacter)
+{
+	const UWorld* World = GetWorld();
+	const ANFGameState* NFGameState = World ? World->GetGameState<ANFGameState>() : nullptr;
+	const float CenterX = Canvas->ClipX * 0.5f;
+
+	if (NFGameState)
+	{
+		// Strongbox counter (spec 1.2: minimal HUD).
+		const FString QuotaText = FString::Printf(TEXT("STRONGBOXES  %d / %d"), NFGameState->GetDeliveredStrongboxes(), NFGameState->GetQuota());
+		DrawText(QuotaText, NFGameState->IsQuotaMet() ? FLinearColor::Green : FLinearColor::White, 60.f, 40.f, nullptr, 1.5f);
+
+		if (NFGameState->GetMissionResult() == ENFMissionResult::Success)
+		{
+			DrawText(FString(TEXT("THAT'S A SHIFT")), FLinearColor::Green, CenterX - 150.f, Canvas->ClipY * 0.3f, nullptr, 3.f);
+		}
+		else if (NFGameState->GetMissionResult() == ENFMissionResult::Failed)
+		{
+			DrawText(FString(TEXT("SHIFT FAILED")), FLinearColor::Red, CenterX - 130.f, Canvas->ClipY * 0.3f, nullptr, 3.f);
+		}
+	}
+
+	const UNFInteractionComponent* Interaction = ViewedCharacter ? ViewedCharacter->GetInteractionComponent() : nullptr;
+	if (!Interaction)
+	{
+		return;
+	}
+
+	const float PromptY = Canvas->ClipY * 0.62f;
+	if (Interaction->IsCarrying())
+	{
+		DrawText(FString(TEXT("CARRYING STRONGBOX - INTERACT OR SWITCH WEAPON TO DROP")), TideAlertColor, CenterX - 260.f, PromptY, nullptr, 1.2f);
+	}
+
+	const ENFInteraction Active = Interaction->GetActiveInteraction();
+	if (Active != ENFInteraction::None)
+	{
+		const float BarWidth = 200.f;
+		const float Progress = Interaction->GetInteractionProgress();
+		const FString Label = Active == ENFInteraction::Revive ? TEXT("REVIVING") : TEXT("LIFTING");
+		DrawText(Label, FLinearColor::White, CenterX - 40.f, PromptY + 28.f, nullptr, 1.2f);
+		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.5f), CenterX - BarWidth * 0.5f, PromptY + 52.f, BarWidth, 8.f);
+		DrawRect(FLinearColor::White, CenterX - BarWidth * 0.5f, PromptY + 52.f, BarWidth * Progress, 8.f);
 	}
 }
