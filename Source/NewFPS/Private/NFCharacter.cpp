@@ -3,7 +3,9 @@
 #include "NFCharacterMovementComponent.h"
 #include "NFGameMode.h"
 #include "NFHealthComponent.h"
+#include "NFInteractionComponent.h"
 #include "NFMovementData.h"
+#include "NFRulesData.h"
 #include "NFTideData.h"
 #include "NFWeaponComponent.h"
 #include "NFWeaponData.h"
@@ -24,12 +26,17 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
+#include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace NFCharacter
 {
 	const double MaxViewPitch = 89.0;
+	/** Seconds between bleed-out steps on the server. */
+	const float BleedoutInterval = 0.25f;
+	/** Height of the grey-box body while downed (cm). */
+	const float DownedBodyHeight = 60.f;
 }
 
 ANFCharacter::ANFCharacter(const FObjectInitializer& ObjectInitializer)
@@ -37,14 +44,18 @@ ANFCharacter::ANFCharacter(const FObjectInitializer& ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	GetCapsuleComponent()->InitCapsuleSize(40.f, 96.f);
+	// Spec 2.1: radius 34, half height 90 (180 tall). Edit the capsule here or in the character Blueprint, not in
+	// the movement data: the engine restores the standing capsule from the class defaults after a crouch.
+	GetCapsuleComponent()->InitCapsuleSize(34.f, 90.f);
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
-	BaseEyeHeight = 64.f;
-	CrouchedEyeHeight = 40.f;
+	// Relative to the capsule centre: eyes 164 above the floor standing (90 + 74), 104 crouched (55 + 49).
+	// PostInitializeComponents recomputes both from the movement data.
+	BaseEyeHeight = 74.f;
+	CrouchedEyeHeight = 49.f;
 
 	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
 	FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
@@ -78,7 +89,7 @@ ANFCharacter::ANFCharacter(const FObjectInitializer& ObjectInitializer)
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderBody"));
 	PlaceholderBody->SetupAttachment(GetCapsuleComponent());
-	PlaceholderBody->SetRelativeScale3D(FVector(0.7f, 0.7f, 1.8f));
+	PlaceholderBody->SetRelativeScale3D(FVector(0.68f, 0.68f, 1.8f));
 	PlaceholderBody->SetOwnerNoSee(true);
 	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (CylinderMesh.Succeeded())
@@ -89,8 +100,55 @@ ANFCharacter::ANFCharacter(const FObjectInitializer& ObjectInitializer)
 	WeaponComponent = CreateDefaultSubobject<UNFWeaponComponent>(TEXT("WeaponComponent"));
 	HealthComponent = CreateDefaultSubobject<UNFHealthComponent>(TEXT("HealthComponent"));
 	WetnessComponent = CreateDefaultSubobject<UNFWetnessComponent>(TEXT("WetnessComponent"));
+	InteractionComponent = CreateDefaultSubobject<UNFInteractionComponent>(TEXT("InteractionComponent"));
+
+	// Carried strongbox stand-ins (engine cube, 100 cm). Hidden until a strongbox is picked up.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+
+	CarryProxyFirstPerson = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CarryProxyFirstPerson"));
+	CarryProxyFirstPerson->SetupAttachment(FirstPersonCamera);
+	// Lower left corner of the view, clear of the crosshair: roughly 6% of the screen at FOV 95.
+	CarryProxyFirstPerson->SetRelativeLocation(FVector(45.f, -34.f, -24.f));
+	CarryProxyFirstPerson->SetRelativeScale3D(FVector(0.28f, 0.20f, 0.16f));
+	CarryProxyFirstPerson->SetOnlyOwnerSee(true);
+	CarryProxyFirstPerson->SetCastShadow(false);
+	CarryProxyFirstPerson->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CarryProxyFirstPerson->SetVisibility(false);
+
+	CarryProxyThirdPerson = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CarryProxyThirdPerson"));
+	CarryProxyThirdPerson->SetupAttachment(GetCapsuleComponent());
+	// Under the left arm, real size (60 x 40 x 40).
+	CarryProxyThirdPerson->SetRelativeLocation(FVector(15.f, -42.f, 10.f));
+	CarryProxyThirdPerson->SetRelativeScale3D(FVector(0.6f, 0.4f, 0.4f));
+	CarryProxyThirdPerson->SetOwnerNoSee(true);
+	CarryProxyThirdPerson->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	CarryProxyThirdPerson->SetVisibility(false);
+
+	if (CubeMesh.Succeeded())
+	{
+		CarryProxyFirstPerson->SetStaticMesh(CubeMesh.Object);
+		CarryProxyThirdPerson->SetStaticMesh(CubeMesh.Object);
+	}
 
 	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+}
+
+void ANFCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ANFCharacter, LifeState);
+	DOREPLIFETIME(ANFCharacter, BleedoutRemaining);
+}
+
+const UNFRulesData* ANFCharacter::GetRules() const
+{
+	return RulesData ? RulesData.Get() : GetDefault<UNFRulesData>();
+}
+
+bool ANFCharacter::IsCarrying() const
+{
+	return InteractionComponent && InteractionComponent->IsCarrying();
 }
 
 void ANFCharacter::PostInitializeComponents()
@@ -102,6 +160,8 @@ void ANFCharacter::PostInitializeComponents()
 
 	if (HealthComponent)
 	{
+		// Before the component's BeginPlay, which fills the health up to the maximum.
+		HealthComponent->SetMaxHealth(GetRules()->MaxHealth, /*bRefill*/ true);
 		HealthComponent->OnDeath.AddUniqueDynamic(this, &ANFCharacter::HandleDeath);
 	}
 	if (WeaponComponent)
@@ -113,6 +173,23 @@ void ANFCharacter::PostInitializeComponents()
 	{
 		WetnessComponent->OnWetnessChanged.AddUniqueDynamic(this, &ANFCharacter::HandleWetnessChanged);
 	}
+}
+
+void ANFCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (HasAuthority() && HealthComponent)
+	{
+		// Spec 6.1: after 5 s without damage, 8 health/s, but only up to 50.
+		const UNFRulesData* Rules = GetRules();
+		HealthComponent->ConfigureRegen(Rules->RegenDelay, Rules->RegenPerSecond, Rules->RegenCap);
+		HealthComponent->SetRegenEnabled(Rules->RegenPerSecond > 0.f);
+	}
+
+	// A late joiner receives LifeState before BeginPlay.
+	ApplyLifeState();
+	HandleCarryStateChanged(IsCarrying());
 }
 
 void ANFCharacter::ApplyMovementData()
@@ -133,13 +210,53 @@ void ANFCharacter::ApplyMovementData()
 	Movement->JumpZVelocity = Data->JumpZVelocity;
 	Movement->AirControl = Data->AirControl;
 	Movement->GravityScale = Data->GravityScale;
+	Movement->MaxStepHeight = Data->MaxStepHeight;
+	Movement->SetWalkableFloorAngle(Data->WalkableFloorAngle);
 	Movement->SetCrouchedHalfHeight(Data->CrouchedHalfHeight);
 
 	if (NFMovement)
 	{
 		NFMovement->SprintSpeed = Data->SprintSpeed;
 		NFMovement->AimWalkSpeedMultiplier = Data->AimWalkSpeedMultiplier;
+		NFMovement->BaseJumpZVelocity = Data->JumpZVelocity;
+		NFMovement->CarryWalkSpeed = Data->CarryWalkSpeed;
+		NFMovement->CarryCrouchSpeed = Data->CarryCrouchSpeed;
+		NFMovement->CarryJumpZVelocity = Data->CarryJumpZVelocity;
+		NFMovement->DownedCrawlSpeed = Data->DownedCrawlSpeed;
 	}
+
+	// The data gives eye heights above the floor; the engine wants them relative to the capsule centre.
+	const float StandingHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	StandingBaseEyeHeight = Data->StandingEyeHeight - StandingHalfHeight;
+	CrouchedEyeHeight = Data->CrouchedEyeHeight - Data->CrouchedHalfHeight;
+	BaseEyeHeight = StandingBaseEyeHeight;
+	FirstPersonCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight));
+
+	UpdatePlaceholderBody();
+}
+
+void ANFCharacter::RecalculateBaseEyeHeight()
+{
+	// The engine's version reads the standing eye height from the class defaults; ours comes from the movement data.
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	BaseEyeHeight = (Movement && Movement->IsCrouching()) ? CrouchedEyeHeight : StandingBaseEyeHeight;
+}
+
+void ANFCharacter::UpdatePlaceholderBody()
+{
+	if (!PlaceholderBody)
+	{
+		return;
+	}
+
+	// Engine cylinder: 100 cm across and tall. Standing: fills the capsule. Downed: a low slab on the floor.
+	const float Radius = GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+	const float HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	const bool bLow = LifeState == ENFLifeState::Downed;
+	const float BodyHeight = bLow ? NFCharacter::DownedBodyHeight : HalfHeight * 2.f;
+
+	PlaceholderBody->SetRelativeScale3D(FVector(Radius * 0.02f, Radius * 0.02f, BodyHeight * 0.01f));
+	PlaceholderBody->SetRelativeLocation(FVector(0.f, 0.f, bLow ? BodyHeight * 0.5f - HalfHeight : 0.f));
 }
 
 void ANFCharacter::Tick(float DeltaSeconds)
@@ -151,16 +268,20 @@ void ANFCharacter::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// Predicted movement states. Fire and ADS take priority over sprint.
+	// Predicted movement states. Fire, ADS and the Kedge take priority over sprint (spec 2.2, 4.3).
 	if (NFMovement && WeaponComponent)
 	{
 		NFMovement->bWantsToAimWalk = WeaponComponent->IsAiming();
-		NFMovement->bWantsToSprint = bSprintHeld && !WeaponComponent->IsAiming() && !WeaponComponent->IsTriggerHeld();
+		NFMovement->bWantsToSprint = bSprintHeld
+			&& !WeaponComponent->IsAiming()
+			&& !WeaponComponent->IsTriggerHeld()
+			&& !WeaponComponent->IsMeleeActive();
 	}
 
-	// Smooth the camera through the capsule resize of crouch/uncrouch.
+	// Smooth the camera through the capsule resize of crouch/uncrouch and through going down / getting up.
 	CrouchEyeOffset = FMath::FInterpTo(CrouchEyeOffset, 0.f, DeltaSeconds, CrouchCameraInterpSpeed);
-	FirstPersonCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight + CrouchEyeOffset));
+	DownedEyeOffset = FMath::FInterpTo(DownedEyeOffset, LifeState == ENFLifeState::Downed ? -DownedCameraDrop : 0.f, DeltaSeconds, CrouchCameraInterpSpeed);
+	FirstPersonCamera->SetRelativeLocation(FVector(0.f, 0.f, BaseEyeHeight + CrouchEyeOffset + DownedEyeOffset));
 
 	if (WeaponComponent)
 	{
@@ -232,43 +353,194 @@ void ANFCharacter::HandleWeaponVisualsReady()
 	WeaponComponent->SetVisualMesh(ActiveMesh);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Life cycle: Alive -> Downed -> (revived | Out). Spec 6.2.
+// ---------------------------------------------------------------------------------------------
+
 void ANFCharacter::HandleDeath(UNFHealthComponent* InHealthComponent, AController* Killer)
 {
+	// "Dead" on the health component means "at 0 health": the player goes down instead of dying.
+	// Clients follow through OnRep_LifeState.
+	if (HasAuthority() && LifeState == ENFLifeState::Alive)
+	{
+		AuthEnterDowned();
+	}
+}
+
+void ANFCharacter::AuthEnterDowned()
+{
+	LifeState = ENFLifeState::Downed;
+	BleedoutRemaining = GetRules()->BleedoutSeconds;
+
+	if (InteractionComponent)
+	{
+		// Spec 2.3: the strongbox is only let go when its carrier goes down.
+		InteractionComponent->AuthCancelInteraction();
+		InteractionComponent->AuthDropCarried();
+	}
+
+	GetWorldTimerManager().ClearTimer(DrownTimerHandle);
+	GetWorldTimerManager().SetTimer(BleedoutTimerHandle, this, &ANFCharacter::AuthTickBleedout, NFCharacter::BleedoutInterval, true);
+
+	ApplyLifeState();
+	ForceNetUpdate();
+
+	if (ANFGameMode* GameMode = GetWorld()->GetAuthGameMode<ANFGameMode>())
+	{
+		GameMode->NotifyPlayerDowned(this);
+	}
+}
+
+void ANFCharacter::AuthTickBleedout()
+{
+	if (LifeState != ENFLifeState::Downed)
+	{
+		GetWorldTimerManager().ClearTimer(BleedoutTimerHandle);
+		return;
+	}
+
+	// Lying in the water: the tide collects three times as fast.
+	const UNFRulesData* Rules = GetRules();
+	const bool bInWater = WetnessComponent && WetnessComponent->GetWaterDepth() >= Rules->WetBleedoutDepth;
+	BleedoutRemaining -= NFCharacter::BleedoutInterval * (bInWater ? Rules->WetBleedoutMultiplier : 1.f);
+
+	if (BleedoutRemaining <= 0.f)
+	{
+		BleedoutRemaining = 0.f;
+		AuthEnterOut();
+	}
+}
+
+void ANFCharacter::AuthEnterOut()
+{
+	if (!HasAuthority() || LifeState == ENFLifeState::Out)
+	{
+		return;
+	}
+
+	LifeState = ENFLifeState::Out;
+	GetWorldTimerManager().ClearTimer(BleedoutTimerHandle);
+	ApplyLifeState();
+	ForceNetUpdate();
+
+	if (ANFGameMode* GameMode = GetWorld()->GetAuthGameMode<ANFGameMode>())
+	{
+		GameMode->NotifyPlayerOut(this);
+	}
+}
+
+bool ANFCharacter::AuthReviveFromDowned(float NewHealth, float InvulnerableSeconds)
+{
+	if (!HasAuthority() || LifeState != ENFLifeState::Downed || !HealthComponent)
+	{
+		return false;
+	}
+
+	GetWorldTimerManager().ClearTimer(BleedoutTimerHandle);
+	HealthComponent->ReviveTo(NewHealth);
+	HealthComponent->SetInvulnerableFor(InvulnerableSeconds);
+
+	LifeState = ENFLifeState::Alive;
+	BleedoutRemaining = 0.f;
+	ApplyLifeState();
+	ForceNetUpdate();
+
+	if (WetnessComponent)
+	{
+		// Got up with the head under water: restart the drowning clock.
+		HandleWetnessChanged(WetnessComponent, WetnessComponent->GetWetness(), WetnessComponent->GetWetness());
+	}
+	return true;
+}
+
+void ANFCharacter::OnRep_LifeState()
+{
+	ApplyLifeState();
+}
+
+void ANFCharacter::ApplyLifeState()
+{
+	const bool bAlive = LifeState == ENFLifeState::Alive;
+	const bool bOut = LifeState == ENFLifeState::Out;
+
 	if (WeaponComponent)
 	{
-		WeaponComponent->StopFire();
-		WeaponComponent->SetAiming(false);
-	}
-	bSprintHeld = false;
-	GetWorldTimerManager().ClearTimer(DrownTimerHandle);
-
-	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	GetCharacterMovement()->DisableMovement();
-	SetActorHiddenInGame(true);
-
-	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
-	{
-		if (PlayerController->IsLocalController())
+		if (!bAlive)
 		{
-			DisableInput(PlayerController);
+			WeaponComponent->StopFire();
+			WeaponComponent->SetAiming(false);
+		}
+		// Downed: no firing, no reload, no Kedge, no weapon switch.
+		WeaponComponent->SetFireBlocked(!bAlive);
+	}
+	if (NFMovement)
+	{
+		// Downed players crawl (UNFMovementData::DownedCrawlSpeed).
+		NFMovement->bDowned = (LifeState == ENFLifeState::Downed);
+	}
+	if (!bAlive)
+	{
+		bSprintHeld = false;
+		UnCrouch();
+	}
 
-			// The respawned pawn adds its own context; do not leave this one behind.
-			if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+	UpdatePlaceholderBody();
+
+	// Out: the lifeline pulled the player up; this pawn is only a husk until the respawn replaces it.
+	SetActorHiddenInGame(bOut);
+	GetCapsuleComponent()->SetCollisionEnabled(bOut ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+	if (bOut)
+	{
+		GetCharacterMovement()->DisableMovement();
+
+		if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+		{
+			if (PlayerController->IsLocalController())
 			{
-				if (DefaultMappingContext)
-				{
-					Subsystem->RemoveMappingContext(DefaultMappingContext);
-				}
+				DisableInput(PlayerController);
+				RemoveInputMappingLocal();
 			}
 		}
 	}
+}
 
-	if (HasAuthority())
+void ANFCharacter::RemoveInputMappingLocal()
+{
+	// The respawned pawn adds its own context; do not leave this one behind.
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController || !DefaultMappingContext)
 	{
-		if (ANFGameMode* GameMode = GetWorld()->GetAuthGameMode<ANFGameMode>())
+		return;
+	}
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+	{
+		Subsystem->RemoveMappingContext(DefaultMappingContext);
+	}
+}
+
+void ANFCharacter::HandleCarryStateChanged(bool bNowCarrying)
+{
+	// Spec 2.3: 400 cm/s, no sprint, low jump; Purser only, hip-fire only, no reload; no Kedge.
+	if (NFMovement)
+	{
+		NFMovement->bCarrying = bNowCarrying;
+	}
+	if (WeaponComponent)
+	{
+		WeaponComponent->SetCarrying(bNowCarrying);
+		if (bNowCarrying && HasAuthority())
 		{
-			GameMode->NotifyPlayerDied(GetController(), Killer);
+			// Gaffer in hand when the box comes up: the Purser replaces it.
+			WeaponComponent->AuthEnsureUsableSlot();
 		}
+	}
+	if (CarryProxyFirstPerson)
+	{
+		CarryProxyFirstPerson->SetVisibility(bNowCarrying);
+	}
+	if (CarryProxyThirdPerson)
+	{
+		CarryProxyThirdPerson->SetVisibility(bNowCarrying);
 	}
 }
 
@@ -279,34 +551,36 @@ void ANFCharacter::HandleDeath(UNFHealthComponent* InHealthComponent, AControlle
 void ANFCharacter::HandleWetnessChanged(UNFWetnessComponent* InWetnessComponent, ENFWetness NewWetness, ENFWetness OldWetness)
 {
 	// Runs on every machine from the same deterministic water height, so nothing here needs an RPC.
-	// The speed penalty is not applied here: UNFCharacterMovementComponent::GetMaxSpeed reads the depth itself.
+	// Not handled here on purpose:
+	//  - the speed/jump penalty: UNFCharacterMovementComponent reads the depth itself;
+	//  - the weapon rules: UNFWeaponComponent::EvaluateUse reads the depth itself (the lock is bound to depth,
+	//    not to this state: Gaffer down at 100 cm, every firearm down at ChestDepth 135 cm).
 	const UNFTideData* TideData = InWetnessComponent->GetTideData();
 
-	const bool bWeaponBlocked = NewWetness >= TideData->WeaponsDisabledFrom;
-	if (WeaponComponent)
+	if (!HasAuthority())
 	{
-		WeaponComponent->SetFireBlocked(bWeaponBlocked);
-		if (bWeaponBlocked)
-		{
-			WeaponComponent->SetAiming(false);
-		}
+		return;
 	}
 
-	if (HasAuthority())
+	FTimerManager& TimerManager = GetWorldTimerManager();
+	if (NewWetness == ENFWetness::Overhead && LifeState == ENFLifeState::Alive)
 	{
-		FTimerManager& TimerManager = GetWorldTimerManager();
-		if (NewWetness == ENFWetness::Overhead)
+		// Head under water: whatever is carried is let go (spec 3.3).
+		if (InteractionComponent)
 		{
-			if (!TimerManager.IsTimerActive(DrownTimerHandle))
-			{
-				TimerManager.SetTimer(DrownTimerHandle, this, &ANFCharacter::ApplyDrownDamage,
-					FMath::Max(TideData->DrownDamageInterval, 0.1f), true, FMath::Max(TideData->DrownGraceSeconds, 0.f));
-			}
+			InteractionComponent->AuthCancelInteraction();
+			InteractionComponent->AuthDropCarried();
 		}
-		else
+
+		if (!TimerManager.IsTimerActive(DrownTimerHandle))
 		{
-			TimerManager.ClearTimer(DrownTimerHandle);
+			TimerManager.SetTimer(DrownTimerHandle, this, &ANFCharacter::ApplyDrownDamage,
+				FMath::Max(TideData->DrownDamageInterval, 0.1f), true, FMath::Max(TideData->DrownGraceSeconds, 0.f));
 		}
+	}
+	else
+	{
+		TimerManager.ClearTimer(DrownTimerHandle);
 	}
 }
 
@@ -320,6 +594,7 @@ void ANFCharacter::ApplyDrownDamage()
 
 	FNFDamageInfo DamageInfo;
 	DamageInfo.BaseDamage = WetnessComponent->GetTideData()->DrownDamagePerInterval;
+	DamageInfo.DamageType = ENFDamageType::Drown;
 	DamageInfo.HitLocation = GetActorLocation();
 	DamageInfo.ShotDirection = FVector::UpVector;
 	HealthComponent->ApplyDamage(DamageInfo);
@@ -327,7 +602,7 @@ void ANFCharacter::ApplyDrownDamage()
 
 bool ANFCharacter::IsWeaponBlockedByWater() const
 {
-	return WeaponComponent && WeaponComponent->IsFireBlocked();
+	return WeaponComponent && WeaponComponent->IsFirearmUnusable();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -408,6 +683,27 @@ void ANFCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(ReloadAction, ETriggerEvent::Started, this, &ANFCharacter::Input_Reload);
 	}
+	if (SwitchWeaponAction)
+	{
+		Input->BindAction(SwitchWeaponAction, ETriggerEvent::Started, this, &ANFCharacter::Input_SwitchWeapon);
+	}
+	if (SlotOneAction)
+	{
+		Input->BindAction(SlotOneAction, ETriggerEvent::Started, this, &ANFCharacter::Input_SlotOne);
+	}
+	if (SlotTwoAction)
+	{
+		Input->BindAction(SlotTwoAction, ETriggerEvent::Started, this, &ANFCharacter::Input_SlotTwo);
+	}
+	if (MeleeAction)
+	{
+		Input->BindAction(MeleeAction, ETriggerEvent::Started, this, &ANFCharacter::Input_Melee);
+	}
+	if (InteractAction)
+	{
+		Input->BindAction(InteractAction, ETriggerEvent::Started, this, &ANFCharacter::Input_InteractStarted);
+		Input->BindAction(InteractAction, ETriggerEvent::Completed, this, &ANFCharacter::Input_InteractCompleted);
+	}
 }
 
 void ANFCharacter::BuildFallbackInput()
@@ -439,6 +735,11 @@ void ANFCharacter::BuildFallbackInput()
 	bCreatedAny |= EnsureAction(FireAction, TEXT("IA_Fallback_Fire"), EInputActionValueType::Boolean);
 	bCreatedAny |= EnsureAction(AimAction, TEXT("IA_Fallback_Aim"), EInputActionValueType::Boolean);
 	bCreatedAny |= EnsureAction(ReloadAction, TEXT("IA_Fallback_Reload"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(SwitchWeaponAction, TEXT("IA_Fallback_SwitchWeapon"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(SlotOneAction, TEXT("IA_Fallback_SlotOne"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(SlotTwoAction, TEXT("IA_Fallback_SlotTwo"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(MeleeAction, TEXT("IA_Fallback_Melee"), EInputActionValueType::Boolean);
+	bCreatedAny |= EnsureAction(InteractAction, TEXT("IA_Fallback_Interact"), EInputActionValueType::Boolean);
 
 	if (!bBuildMappings)
 	{
@@ -494,6 +795,14 @@ void ANFCharacter::BuildFallbackInput()
 	Map(AimAction, EKeys::Gamepad_LeftTrigger, false, false, false);
 	Map(ReloadAction, EKeys::R, false, false, false);
 	Map(ReloadAction, EKeys::Gamepad_FaceButton_Left, false, false, false);
+	Map(SwitchWeaponAction, EKeys::Q, false, false, false);
+	Map(SwitchWeaponAction, EKeys::Gamepad_FaceButton_Top, false, false, false);
+	Map(SlotOneAction, EKeys::One, false, false, false);
+	Map(SlotTwoAction, EKeys::Two, false, false, false);
+	Map(MeleeAction, EKeys::V, false, false, false);
+	Map(MeleeAction, EKeys::Gamepad_RightThumbstick, false, false, false);
+	Map(InteractAction, EKeys::E, false, false, false);
+	Map(InteractAction, EKeys::Gamepad_DPad_Down, false, false, false);
 
 	DefaultMappingContext = Context;
 }
@@ -542,7 +851,7 @@ void ANFCharacter::Input_LookStick(const FInputActionValue& Value)
 void ANFCharacter::Input_JumpStarted()
 {
 	// Jumping out of a crouch stands up first, as players expect.
-	if (bIsCrouched)
+	if (GetCharacterMovement()->IsCrouching())
 	{
 		UnCrouch();
 	}
@@ -556,7 +865,10 @@ void ANFCharacter::Input_JumpCompleted()
 
 void ANFCharacter::Input_CrouchStarted()
 {
-	Crouch();
+	if (LifeState == ENFLifeState::Alive)
+	{
+		Crouch();
+	}
 }
 
 void ANFCharacter::Input_CrouchCompleted()
@@ -592,7 +904,9 @@ void ANFCharacter::Input_FireCompleted()
 
 void ANFCharacter::Input_AimStarted()
 {
-	if (WeaponComponent && !IsWeaponBlockedByWater())
+	// The intent is always recorded; UNFWeaponComponent::IsAiming decides whether it is allowed right now
+	// (not waist deep, not carrying, not mid-swing), so ADS comes back by itself when the block ends.
+	if (WeaponComponent)
 	{
 		WeaponComponent->SetAiming(true);
 	}
@@ -611,5 +925,67 @@ void ANFCharacter::Input_Reload()
 	if (WeaponComponent)
 	{
 		WeaponComponent->StartReload();
+	}
+}
+
+void ANFCharacter::SelectSlotOrDrop(int32 Slot)
+{
+	// Spec 2.3: switching weapons is the other way to let go of the strongbox. The weapon itself does not
+	// change on that press (only the Purser works one-handed anyway).
+	if (IsCarrying())
+	{
+		InteractionComponent->RequestDrop();
+		return;
+	}
+
+	if (WeaponComponent)
+	{
+		if (Slot < 0)
+		{
+			WeaponComponent->SwitchWeapon();
+		}
+		else
+		{
+			WeaponComponent->SelectSlot(Slot);
+		}
+	}
+}
+
+void ANFCharacter::Input_SwitchWeapon()
+{
+	SelectSlotOrDrop(-1);
+}
+
+void ANFCharacter::Input_SlotOne()
+{
+	SelectSlotOrDrop(0);
+}
+
+void ANFCharacter::Input_SlotTwo()
+{
+	SelectSlotOrDrop(1);
+}
+
+void ANFCharacter::Input_Melee()
+{
+	if (WeaponComponent)
+	{
+		WeaponComponent->StartMelee();
+	}
+}
+
+void ANFCharacter::Input_InteractStarted()
+{
+	if (InteractionComponent && LifeState == ENFLifeState::Alive)
+	{
+		InteractionComponent->BeginInteract();
+	}
+}
+
+void ANFCharacter::Input_InteractCompleted()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->EndInteract();
 	}
 }

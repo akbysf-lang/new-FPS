@@ -64,6 +64,9 @@ protected:
 
 private:
 	ENFWetness Wetness = ENFWetness::Dry;
+	/** State waiting out UNFTideData::WetnessChangeDelay before it is adopted. */
+	ENFWetness PendingWetness = ENFWetness::Dry;
+	float PendingSinceTime = 0.f;
 	float WaterDepth = -100000.f;
 	FTimerHandle UpdateTimerHandle;
 };

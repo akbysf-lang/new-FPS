@@ -98,7 +98,10 @@ public:
 
 	// ---- Events (fire locally on every machine; bind bells/announcements here) ----
 
-	/** A new phase began. Also fires once when the tide first becomes known (OldPhase == NewPhase). */
+	/**
+	 * A new tide table entry began. OldPhase == NewPhase when only the entry changed (e.g. Flood F1 -> F2, the
+	 * half tide pause) and once when the tide first becomes known.
+	 */
 	UPROPERTY(BlueprintAssignable, Category = "Tide")
 	FNFOnTidePhaseChanged OnTidePhaseChanged;
 
@@ -160,6 +163,7 @@ private:
 	bool bResyncWarnings = false;
 	int64 LastPhaseSerial = 0;
 	ENFTidePhase LastPhase = ENFTidePhase::LowSlack;
+	/** Sample.LabelRemaining at the previous poll (seconds until the phase label changes). */
 	float LastPhaseRemaining = 0.f;
 
 	FTimerHandle EventTimerHandle;

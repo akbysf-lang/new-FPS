@@ -76,17 +76,35 @@ void UNFWetnessComponent::RefreshWetness()
 	const ANFTideManager* TideManager = ANFTideManager::Get(GetWorld());
 
 	ENFWetness NewWetness = ENFWetness::Dry;
+	float ChangeDelay = 0.f;
 	if (Owner && TideManager)
 	{
+		const UNFTideData* TideData = TideManager->GetTideData();
 		WaterDepth = TideManager->GetWaterZAt(Owner->GetActorLocation()) - GetFeetZ();
-		NewWetness = TideManager->GetTideData()->GetWetnessForDepth(WaterDepth, Wetness);
+		NewWetness = TideData->GetWetnessForDepth(WaterDepth, Wetness);
+		ChangeDelay = TideData->WetnessChangeDelay;
 	}
 	else
 	{
 		WaterDepth = NFWetness::NoWaterDepth;
 	}
 
-	if (NewWetness != Wetness)
+	if (NewWetness == Wetness)
+	{
+		PendingWetness = Wetness;
+		return;
+	}
+
+	// The depth (GetWaterDepth) is always current; only the state change waits out the delay.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.f;
+	if (NewWetness != PendingWetness)
+	{
+		PendingWetness = NewWetness;
+		PendingSinceTime = Now;
+	}
+
+	if (ChangeDelay <= 0.f || Now - PendingSinceTime >= ChangeDelay)
 	{
 		const ENFWetness OldWetness = Wetness;
 		Wetness = NewWetness;

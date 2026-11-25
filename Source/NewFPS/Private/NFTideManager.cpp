@@ -111,11 +111,11 @@ const TCHAR* ANFTideManager::GetPhaseLabel(ENFTidePhase Phase)
 	switch (Phase)
 	{
 	case ENFTidePhase::LowSlack:
-		return TEXT("LOW WATER");
+		return TEXT("SLACK LOW");
 	case ENFTidePhase::Flood:
 		return TEXT("FLOOD");
 	case ENFTidePhase::HighSlack:
-		return TEXT("HIGH WATER");
+		return TEXT("SLACK HIGH");
 	case ENFTidePhase::Ebb:
 		return TEXT("EBB");
 	default:
@@ -342,7 +342,10 @@ void ANFTideManager::PollTideEvents()
 		LastPhaseSerial = PhaseSerial;
 		LastPhase = Sample.Phase;
 		// Joining mid-phase: warnings that were already due stay silent.
-		LastPhaseRemaining = bFirstSample ? Sample.PhaseRemaining : Sample.PhaseDuration;
+		if (bFirstSample)
+		{
+			LastPhaseRemaining = Sample.LabelRemaining;
+		}
 
 		UE_LOG(LogNewFPS, Log, TEXT("Tide phase: %s (%.0f s left, water Z %.1f)"), GetPhaseLabel(Sample.Phase), Sample.PhaseRemaining, Sample.WaterZ);
 		OnTidePhaseChanged.Broadcast(Sample.Phase, OldPhase);
@@ -351,19 +354,23 @@ void ANFTideManager::PollTideEvents()
 	if (bResyncWarnings)
 	{
 		bResyncWarnings = false;
-		LastPhaseRemaining = Sample.PhaseRemaining;
+		LastPhaseRemaining = Sample.LabelRemaining;
 	}
 
+	// Warnings count down to the next LABEL change (the tide turning), not to the next table entry: the spec's
+	// table has several entries per label (F1..F5 are all "Flood"). When the label changes, LabelRemaining jumps
+	// up, so nothing fires by accident.
 	for (const FNFTideWarning& Warning : Data->Warnings)
 	{
-		if (Warning.UpcomingPhase == Sample.NextPhase
+		if (Warning.UpcomingPhase == Sample.NextLabel
+			&& Sample.NextLabel != Sample.Phase
 			&& LastPhaseRemaining > Warning.SecondsBefore
-			&& Sample.PhaseRemaining <= Warning.SecondsBefore)
+			&& Sample.LabelRemaining <= Warning.SecondsBefore)
 		{
-			OnTideWarning.Broadcast(Warning.WarningId, Warning.UpcomingPhase, Sample.PhaseRemaining);
+			OnTideWarning.Broadcast(Warning.WarningId, Warning.UpcomingPhase, Sample.LabelRemaining);
 		}
 	}
-	LastPhaseRemaining = Sample.PhaseRemaining;
+	LastPhaseRemaining = Sample.LabelRemaining;
 }
 
 void ANFTideManager::UpdateWaterPlane(float WaterZ)

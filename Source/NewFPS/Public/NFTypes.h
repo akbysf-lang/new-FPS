@@ -22,7 +22,11 @@ enum class ENFWetness : uint8
 	Dry,
 	/** Knee deep: movement slows down. */
 	Knee,
-	/** Waist/chest deep: weapons cannot be used (players), automatons short out (AI). */
+	/**
+	 * Waist deep (WaistDepth, 100 cm and up). Players: the Gaffer goes down and the Purser is hip-fire only.
+	 * Chest is not a state but a depth inside Waist (UNFTideData::ChestDepth, 135 cm): from there no firearm
+	 * works at all, only the Kedge. AI automatons short out at waist depth.
+	 */
 	Waist,
 	/** Head under water: drowning. */
 	Overhead
@@ -40,6 +44,39 @@ enum class ENFTidePhase : uint8
 	HighSlack,
 	/** Water falling. */
 	Ebb
+};
+
+/** Where a hit came from. Enemies use it to pick their reaction (stagger, knockback). */
+UENUM(BlueprintType)
+enum class ENFDamageType : uint8
+{
+	Bullet,
+	/** Player melee (Kedge). */
+	Melee,
+	EnemyMelee,
+	EnemyProjectile,
+	Drown,
+	/** Rules/script (short circuit, kill volume). */
+	Script
+};
+
+/** Player life cycle in co-op (spec 6.2). */
+UENUM(BlueprintType)
+enum class ENFLifeState : uint8
+{
+	Alive,
+	/** At 0 health: crawling, cannot fight, can be revived. */
+	Downed,
+	/** Bled out: pulled up by the lifeline, waiting to come back down. */
+	Out
+};
+
+UENUM(BlueprintType)
+enum class ENFMissionResult : uint8
+{
+	InProgress,
+	Success,
+	Failed
 };
 
 /** Everything the single damage pipeline (UNFHealthComponent::ApplyDamage) needs. */
@@ -62,6 +99,9 @@ struct FNFDamageInfo
 
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	ENFHitZone Zone = ENFHitZone::Body;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Damage")
+	ENFDamageType DamageType = ENFDamageType::Bullet;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Damage")
 	FVector HitLocation = FVector::ZeroVector;

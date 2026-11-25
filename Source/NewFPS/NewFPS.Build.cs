@@ -13,7 +13,10 @@ public class NewFPS : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
-			"Niagara"
+			"Niagara",
+			"AIModule",
+			"NavigationSystem",
+			"GameplayTasks"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

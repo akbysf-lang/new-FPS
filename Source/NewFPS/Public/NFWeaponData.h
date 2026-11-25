@@ -14,7 +14,9 @@ class UNiagaraSystem;
 /**
  * All designer-tunable numbers and presentation references for one weapon.
  * Create in the editor: Content Browser -> Miscellaneous -> Data Asset -> NFWeaponData.
- * The class defaults are a usable 600 RPM rifle so the prototype runs without any asset.
+ * The class defaults are a generic 600 RPM test rifle. The prototype's two firearms have their spec values as
+ * class defaults in the subclasses below (UNFPurserData, UNFGafferData): create a Data Asset of one of those
+ * classes to start from the spec numbers, or leave UNFWeaponComponent::Loadout empty to use them as they are.
  */
 UCLASS(BlueprintType)
 class NEWFPS_API UNFWeaponData : public UPrimaryDataAsset
@@ -42,8 +44,17 @@ public:
 
 	// ---- Damage ----
 
+	/** Per pellet when PelletsPerShot > 1. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage", meta = (ClampMin = "0.0"))
 	float Damage = 25.f;
+
+	/**
+	 * Projectiles per trigger pull (shotgun pellets). Each pellet is traced independently inside the spread cone
+	 * and gets its own tracer; the damage of all pellets that hit the same target is applied as ONE hit, so the
+	 * target sees the total of the shot (stagger thresholds). One pull always costs one round.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 PelletsPerShot = 1;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage", meta = (ClampMin = "0.0"))
 	float HeadshotMultiplier = 2.f;
@@ -70,6 +81,24 @@ public:
 	/** Semi-auto only: a press this many seconds before the weapon is ready still fires. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire", meta = (ClampMin = "0.0"))
 	float FireInputBuffer = 0.1f;
+
+	// ---- Handling ----
+
+	/** Seconds from selecting this weapon until it can fire (weapon switch time). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = "0.0"))
+	float EquipTime = 0.4f;
+
+	/** Can be fired one-handed while carrying a strongbox (hip-fire only, no reload). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling")
+	bool bUsableWhileCarrying = false;
+
+	/**
+	 * Deepest wetness state this weapon still works in. The lock itself is bound to depth: the weapon stops at the
+	 * threshold of the next state (Knee -> stops at WaistDepth; Waist -> would stop at OverheadDepth), and never
+	 * works at UNFTideData::ChestDepth or deeper. Gaffer: Knee. Purser: Waist.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling")
+	ENFWetness MaxUsableWetness = ENFWetness::Waist;
 
 	// ---- Ammo ----
 
@@ -215,4 +244,68 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation|VFX")
 	TSoftObjectPtr<UNiagaraSystem> ImpactFX;
+};
+
+/** Purser, the break-top revolver (prototype-spec.md 4.1). Class defaults = spec starting values. */
+UCLASS(BlueprintType)
+class NEWFPS_API UNFPurserData : public UNFWeaponData
+{
+	GENERATED_BODY()
+
+public:
+	UNFPurserData();
+};
+
+/** Gaffer, the pump shotgun (prototype-spec.md 4.2). Class defaults = spec starting values. */
+UCLASS(BlueprintType)
+class NEWFPS_API UNFGafferData : public UNFWeaponData
+{
+	GENERATED_BODY()
+
+public:
+	UNFGafferData();
+};
+
+/**
+ * Kedge, the boat-hook melee everyone carries (prototype-spec.md 4.3). Not a weapon slot: swung with its own
+ * input while the firearm stays in hand. Class defaults = spec starting values.
+ */
+UCLASS(BlueprintType)
+class NEWFPS_API UNFMeleeData : public UPrimaryDataAsset
+{
+	GENERATED_BODY()
+
+public:
+	virtual FPrimaryAssetId GetPrimaryAssetId() const override
+	{
+		return FPrimaryAssetId(FPrimaryAssetType(TEXT("NFMelee")), GetFName());
+	}
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Info")
+	FText DisplayName;
+
+	/** No weak-point multiplier. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee", meta = (ClampMin = "0.0"))
+	float Damage = 40.f;
+
+	/** Seconds between swings; firing and ADS are locked for this long after the button. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee", meta = (ClampMin = "0.05"))
+	float SwingInterval = 0.6f;
+
+	/** Seconds from the button to the hit. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee", meta = (ClampMin = "0.0"))
+	float HitDelay = 0.15f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee", meta = (ClampMin = "10.0", Units = "cm"))
+	float Reach = 180.f;
+
+	/** Full cone angle in degrees; the nearest target inside it is the only one hit. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee", meta = (ClampMin = "1.0", ClampMax = "180.0"))
+	float ConeAngle = 60.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation|Sound")
+	TSoftObjectPtr<USoundBase> SwingSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation|Sound")
+	TSoftObjectPtr<USoundBase> HitSound;
 };

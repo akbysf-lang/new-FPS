@@ -3,54 +3,44 @@
 
 UNFTideData::UNFTideData()
 {
-	// Placeholder table: 30 s low slack, 90 s flood, 30 s high slack, 90 s ebb (weights 1/3/1/3 of 240 s).
-	FNFTidePhaseEntry LowSlack;
-	LowSlack.Phase = ENFTidePhase::LowSlack;
-	LowSlack.DurationWeight = 1.f;
-	LowSlack.StartLevel = 0.f;
-	LowSlack.EndLevel = 0.f;
+	// prototype-spec.md 3.2: one 12:00 cycle, piecewise linear. Weights are seconds (they sum to CycleDurationSeconds),
+	// levels are world Z / HighWaterZ. Change the numbers in an NFTideData asset, not here.
+	const float High = 830.f;
+	auto AddPhase = [this, High](ENFTidePhase Phase, float Seconds, float StartZ, float EndZ)
+	{
+		FNFTidePhaseEntry Entry;
+		Entry.Phase = Phase;
+		Entry.DurationWeight = Seconds;
+		Entry.StartLevel = StartZ / High;
+		Entry.EndLevel = EndZ / High;
+		Phases.Add(Entry);
+	};
 
-	FNFTidePhaseEntry Flood;
-	Flood.Phase = ENFTidePhase::Flood;
-	Flood.DurationWeight = 3.f;
-	Flood.StartLevel = 0.f;
-	Flood.EndLevel = 1.f;
+	AddPhase(ENFTidePhase::Ebb, 90.f, 830.f, 200.f);        // E1  0:00-1:30
+	AddPhase(ENFTidePhase::Ebb, 30.f, 200.f, 150.f);        // E2  1:30-2:00
+	AddPhase(ENFTidePhase::LowSlack, 120.f, 150.f, 0.f);    // SL1 2:00-4:00 (still draining)
+	AddPhase(ENFTidePhase::LowSlack, 60.f, 0.f, 0.f);       // SL2 4:00-5:00
+	AddPhase(ENFTidePhase::Flood, 90.f, 0.f, 300.f);        // F1  5:00-6:30 beach goes
+	AddPhase(ENFTidePhase::Flood, 30.f, 300.f, 300.f);      // F2  6:30-7:00 half tide pause
+	AddPhase(ENFTidePhase::Flood, 105.f, 300.f, 700.f);     // F3  7:00-8:45 half level goes
+	AddPhase(ENFTidePhase::Flood, 15.f, 700.f, 700.f);      // F4  8:45-9:00
+	AddPhase(ENFTidePhase::Flood, 60.f, 700.f, 830.f);      // F5  9:00-10:00 terrace gets wet
+	AddPhase(ENFTidePhase::HighSlack, 120.f, 830.f, 830.f); // SH  10:00-12:00
 
-	FNFTidePhaseEntry HighSlack;
-	HighSlack.Phase = ENFTidePhase::HighSlack;
-	HighSlack.DurationWeight = 1.f;
-	HighSlack.StartLevel = 1.f;
-	HighSlack.EndLevel = 1.f;
+	auto AddWarning = [this](const TCHAR* Id, ENFTidePhase Upcoming, float SecondsBefore)
+	{
+		FNFTideWarning Warning;
+		Warning.WarningId = FName(Id);
+		Warning.UpcomingPhase = Upcoming;
+		Warning.SecondsBefore = SecondsBefore;
+		Warnings.Add(Warning);
+	};
 
-	FNFTidePhaseEntry Ebb;
-	Ebb.Phase = ENFTidePhase::Ebb;
-	Ebb.DurationWeight = 3.f;
-	Ebb.StartLevel = 1.f;
-	Ebb.EndLevel = 0.f;
-
-	Phases.Add(LowSlack);
-	Phases.Add(Flood);
-	Phases.Add(HighSlack);
-	Phases.Add(Ebb);
-
-	FNFTideWarning FloodSoon;
-	FloodSoon.WarningId = TEXT("FloodSoon");
-	FloodSoon.UpcomingPhase = ENFTidePhase::Flood;
-	FloodSoon.SecondsBefore = 20.f;
-
-	FNFTideWarning FloodNow;
-	FloodNow.WarningId = TEXT("FloodImminent");
-	FloodNow.UpcomingPhase = ENFTidePhase::Flood;
-	FloodNow.SecondsBefore = 5.f;
-
-	FNFTideWarning HighWaterSoon;
-	HighWaterSoon.WarningId = TEXT("HighWaterSoon");
-	HighWaterSoon.UpcomingPhase = ENFTidePhase::HighSlack;
-	HighWaterSoon.SecondsBefore = 20.f;
-
-	Warnings.Add(FloodSoon);
-	Warnings.Add(FloodNow);
-	Warnings.Add(HighWaterSoon);
+	// Spec 3.4: T-60 (clock flashes), T-30 (one bell), T-10 (three bells) before the tide turns.
+	AddWarning(TEXT("FloodT60"), ENFTidePhase::Flood, 60.f);
+	AddWarning(TEXT("FloodT30"), ENFTidePhase::Flood, 30.f);
+	AddWarning(TEXT("FloodT10"), ENFTidePhase::Flood, 10.f);
+	AddWarning(TEXT("HighWaterSoon"), ENFTidePhase::HighSlack, 20.f);
 }
 
 FPrimaryAssetId UNFTideData::GetPrimaryAssetId() const
@@ -85,8 +75,8 @@ float UNFTideData::EaseLevel(float Alpha) const
 	{
 		return FMath::Clamp(HeightEaseCurve->GetFloatValue(Alpha), 0.f, 1.f);
 	}
-	// Smoothstep: no visible jerk where a phase starts or ends.
-	return Alpha * Alpha * (3.f - 2.f * Alpha);
+	// Smoothstep hides the jerk where an entry starts or ends; the spec's table is linear.
+	return bSmoothPhaseEase ? Alpha * Alpha * (3.f - 2.f * Alpha) : Alpha;
 }
 
 FNFTideSample UNFTideData::Evaluate(double ElapsedSeconds) const
@@ -147,6 +137,30 @@ FNFTideSample UNFTideData::Evaluate(double ElapsedSeconds) const
 
 	const int32 NextIndex = (FoundIndex + 1 < NumPhases) ? FoundIndex + 1 : (bLoop ? 0 : FoundIndex);
 
+	// Time until the label changes: walk forward over entries that carry the same label.
+	double LabelRemaining = PhaseLength - PhaseElapsed;
+	ENFTidePhase NextLabel = Entry.Phase;
+	int32 WalkIndex = FoundIndex;
+	for (int32 Step = 0; Step < NumPhases; ++Step)
+	{
+		int32 Following = WalkIndex + 1;
+		if (Following >= NumPhases)
+		{
+			if (!bLoop)
+			{
+				break;
+			}
+			Following = 0;
+		}
+		if (Phases[Following].Phase != Entry.Phase)
+		{
+			NextLabel = Phases[Following].Phase;
+			break;
+		}
+		LabelRemaining += CycleDuration * FMath::Max(Phases[Following].DurationWeight, 0.f) / TotalWeight;
+		WalkIndex = Following;
+	}
+
 	Sample.bValid = true;
 	Sample.PhaseIndex = FoundIndex;
 	Sample.Phase = Entry.Phase;
@@ -154,6 +168,8 @@ FNFTideSample UNFTideData::Evaluate(double ElapsedSeconds) const
 	Sample.PhaseDuration = static_cast<float>(PhaseLength);
 	Sample.PhaseElapsed = static_cast<float>(PhaseElapsed);
 	Sample.PhaseRemaining = static_cast<float>(PhaseLength - PhaseElapsed);
+	Sample.LabelRemaining = static_cast<float>(LabelRemaining);
+	Sample.NextLabel = NextLabel;
 	Sample.Level = FMath::Lerp(Entry.StartLevel, Entry.EndLevel, EaseLevel(Alpha));
 	Sample.WaterZ = FMath::Lerp(LowWaterZ, HighWaterZ, Sample.Level);
 	return Sample;
@@ -201,7 +217,43 @@ float UNFTideData::GetSpeedMultiplierForDepth(float DepthCm) const
 		return FMath::Lerp(1.f, KneeSpeedMultiplier, Alpha);
 	}
 
-	const float WaistRange = FMath::Max(WaistDepth - KneeDepth, 1.f);
-	const float Alpha = FMath::Clamp((DepthCm - KneeDepth) / WaistRange, 0.f, 1.f);
-	return FMath::Lerp(KneeSpeedMultiplier, WaistSpeedMultiplier, Alpha);
+	if (DepthCm <= WaistDepth)
+	{
+		const float WaistRange = FMath::Max(WaistDepth - KneeDepth, 1.f);
+		const float Alpha = FMath::Clamp((DepthCm - KneeDepth) / WaistRange, 0.f, 1.f);
+		return FMath::Lerp(KneeSpeedMultiplier, WaistSpeedMultiplier, Alpha);
+	}
+
+	// Waist -> chest keeps ramping (still continuous: see the tide ADR); flat from ChestDepth down.
+	const float ChestRange = FMath::Max(ChestDepth - WaistDepth, 1.f);
+	const float Alpha = FMath::Clamp((DepthCm - WaistDepth) / ChestRange, 0.f, 1.f);
+	return FMath::Lerp(WaistSpeedMultiplier, ChestSpeedMultiplier, Alpha);
+}
+
+float UNFTideData::GetJumpMultiplierForDepth(float DepthCm) const
+{
+	if (DepthCm >= WaistDepth)
+	{
+		return 0.f;
+	}
+	const float BlendStart = KneeDepth - FMath::Max(WadeBlendDepth, 1.f);
+	const float Alpha = FMath::Clamp((DepthCm - BlendStart) / (KneeDepth - BlendStart), 0.f, 1.f);
+	return FMath::Lerp(1.f, KneeJumpMultiplier, Alpha);
+}
+
+float UNFTideData::GetFirearmDepthLimit(ENFWetness MaxUsableWetness) const
+{
+	float Limit = ChestDepth;
+	switch (MaxUsableWetness)
+	{
+	case ENFWetness::Dry:
+		Limit = KneeDepth;
+		break;
+	case ENFWetness::Knee:
+		Limit = WaistDepth;
+		break;
+	default:
+		break;
+	}
+	return FMath::Min(Limit, ChestDepth);
 }

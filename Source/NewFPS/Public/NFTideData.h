@@ -80,6 +80,17 @@ struct FNFTideSample
 	UPROPERTY(BlueprintReadOnly, Category = "Tide")
 	float PhaseRemaining = 0.f;
 
+	/**
+	 * Seconds until the phase LABEL changes (e.g. until the tide turns): the rest of this entry plus every
+	 * following entry with the same label. This is what the HUD clock and the warnings count down.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Tide")
+	float LabelRemaining = 0.f;
+
+	/** The label that follows the current run of same-label entries (== Phase when nothing follows). */
+	UPROPERTY(BlueprintReadOnly, Category = "Tide")
+	ENFTidePhase NextLabel = ENFTidePhase::LowSlack;
+
 	/** 0 = low water, 1 = high water. */
 	UPROPERTY(BlueprintReadOnly, Category = "Tide")
 	float Level = 0.f;
@@ -92,7 +103,8 @@ struct FNFTideSample
 /**
  * Designer-tunable tide table and wetness rules for one mission.
  * Create in the editor: Content Browser -> Miscellaneous -> Data Asset -> NFTideData, assign it to the level's ANFTideManager.
- * The class defaults are placeholders (4 minute cycle) so the prototype runs without any asset.
+ * The class defaults are the prototype spec's 12 minute Promenade table (prototype-spec.md 3.2), so the
+ * prototype runs without any asset.
  */
 UCLASS(BlueprintType)
 class NEWFPS_API UNFTideData : public UPrimaryDataAsset
@@ -122,15 +134,26 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Tide")
 	float GetSpeedMultiplierForDepth(float DepthCm) const;
 
+	/** Jump velocity multiplier for a water depth above the feet (cm). Jumping stops altogether at WaistDepth. */
+	UFUNCTION(BlueprintPure, Category = "Tide")
+	float GetJumpMultiplierForDepth(float DepthCm) const;
+
+	/**
+	 * Depth (cm) from which a firearm that is usable up to MaxUsableWetness stops working: the threshold of the
+	 * next wetter state, never deeper than ChestDepth (the common lock for every firearm).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Tide")
+	float GetFirearmDepthLimit(ENFWetness MaxUsableWetness) const;
+
 	// ---- Cycle ----
 
 	/** Length of one full pass through Phases. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "1.0", Units = "s"))
-	float CycleDurationSeconds = 240.f;
+	float CycleDurationSeconds = 720.f;
 
 	/** Start over after the last phase. Off = the tide stops at the end of the last phase. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cycle")
-	bool bLoop = true;
+	bool bLoop = false;
 
 	/** The tide table, in order. Each phase should start at the level the previous one ended at. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cycle")
@@ -144,14 +167,18 @@ public:
 
 	/** World Z (cm) of the water surface at level 1. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Height", meta = (Units = "cm"))
-	float HighWaterZ = 700.f;
+	float HighWaterZ = 830.f;
 
 	/**
 	 * Shape of the level change inside one phase. X = 0..1 through the phase, Y = 0..1 from StartLevel to EndLevel.
-	 * Empty = smooth ease in/out.
+	 * Empty = linear, or smooth ease in/out when bSmoothPhaseEase is set.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Height")
 	TObjectPtr<UCurveFloat> HeightEaseCurve;
+
+	/** Only without a HeightEaseCurve. Off = piecewise linear water (the spec's table); on = smoothstep per entry. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Height")
+	bool bSmoothPhaseEase = false;
 
 	// ---- Wetness thresholds (water depth above the feet) ----
 
@@ -161,12 +188,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
 	float WaistDepth = 100.f;
 
+	/**
+	 * Not a wetness state: a depth inside Waist. From here no firearm works (only the Kedge), a strongbox cannot
+	 * be picked up, and the HUD shows "TOO DEEP TO SHOOT".
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
+	float ChestDepth = 135.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
 	float OverheadDepth = 165.f;
 
 	/** The water must drop this far below a threshold before the state steps back down (stops flicker at the waterline). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
-	float WetnessHysteresis = 4.f;
+	float WetnessHysteresis = 8.f;
+
+	/** A new state must hold this long before it is adopted (second guard against flicker at the waterline). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "s"))
+	float WetnessChangeDelay = 0.2f;
 
 	// ---- Effects on characters ----
 
@@ -174,27 +212,45 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.05", ClampMax = "1.0"))
 	float KneeSpeedMultiplier = 0.75f;
 
-	/** Speed multiplier at WaistDepth and deeper. Between knee and waist the multiplier is interpolated. */
+	/** Speed multiplier at exactly WaistDepth. Between knee and waist the multiplier is interpolated. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.05", ClampMax = "1.0"))
 	float WaistSpeedMultiplier = 0.5f;
+
+	/** Speed multiplier at ChestDepth and deeper. Between waist and chest the multiplier is interpolated. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float ChestSpeedMultiplier = 0.4f;
+
+	/** Jump velocity multiplier at KneeDepth (blended in like the speed). No jumping at all from WaistDepth. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float KneeJumpMultiplier = 0.8f;
 
 	/** The slowdown ramps in over this many cm below KneeDepth instead of switching on at once. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "1.0", Units = "cm"))
 	float WadeBlendDepth = 15.f;
 
-	/** Weapons cannot be fired from this wetness upwards. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	ENFWetness WeaponsDisabledFrom = ENFWetness::Waist;
+	/**
+	 * Firearm rule (spec 3.3, bound to depth, not to the wetness state):
+	 *   depth < WaistDepth               every weapon
+	 *   WaistDepth <= depth < ChestDepth  only weapons with MaxUsableWetness >= Waist (Purser), hip-fire only,
+	 *                                     spread x WaistSpreadMultiplier, reload time x WaistReloadTimeMultiplier
+	 *   depth >= ChestDepth               no firearm, Kedge only
+	 *   depth >= OverheadDepth            nothing
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "1.0"))
+	float WaistSpreadMultiplier = 1.5f;
 
-	/** Seconds with the head under water before drowning damage starts. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "1.0"))
+	float WaistReloadTimeMultiplier = 1.25f;
+
+	/** Seconds with the head under water before drowning damage starts (spec: 8 s of breath, then 20 health/s). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.0", Units = "s"))
-	float DrownGraceSeconds = 6.f;
+	float DrownGraceSeconds = 8.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.1", Units = "s"))
-	float DrownDamageInterval = 1.f;
+	float DrownDamageInterval = 0.5f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.0"))
-	float DrownDamagePerInterval = 15.f;
+	float DrownDamagePerInterval = 10.f;
 
 	// ---- Warnings ----
 

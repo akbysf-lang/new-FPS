@@ -12,6 +12,8 @@ class UNFHealthComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FNFOnHealthChanged, UNFHealthComponent*, HealthComponent, float, NewHealth, float, Delta, AController*, InstigatedBy);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FNFOnDeath, UNFHealthComponent*, HealthComponent, AController*, Killer);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FNFOnRevived, UNFHealthComponent*, HealthComponent);
+/** Server only, native: the full damage record of one hit and the damage that was actually applied. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FNFOnDamageTakenNative, const FNFDamageInfo& /*DamageInfo*/, float /*AppliedDamage*/);
 
 /**
  * Replicated health. All damage in the game goes through ApplyDamage (server only).
@@ -37,6 +39,29 @@ public:
 	/** Server only: restore full health and clear the dead state. */
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	void Revive();
+
+	/** Server only: set health to NewHealth (clamped to 1..MaxHealth) and clear the dead state. */
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void ReviveTo(float NewHealth);
+
+	/** Server only: drop to 0 and die, ignoring resistances and invulnerability (short circuit, kill rules). */
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	void Kill(AController* Killer);
+
+	/** Any machine sets the maximum; only the server touches the current health (bRefill sets it to the new maximum). */
+	void SetMaxHealth(float NewMaxHealth, bool bRefill);
+
+	void SetDamageTakenMultiplier(float NewMultiplier) { DamageTakenMultiplier = FMath::Max(NewMultiplier, 0.f); }
+
+	/** Server only: ignore damage for Seconds (revive grace). */
+	void SetInvulnerableFor(float Seconds);
+
+	/**
+	 * Server only. After DelaySeconds without damage, heal RatePerSecond up to CapHealth (<= 0 means MaxHealth).
+	 * Configure once, then switch on and off with SetRegenEnabled.
+	 */
+	void ConfigureRegen(float DelaySeconds, float RatePerSecond, float CapHealth);
+	void SetRegenEnabled(bool bEnabled);
 
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetHealth() const { return Health; }
@@ -66,11 +91,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Health")
 	FNFOnRevived OnRevived;
 
+	/** Server only. Fires for every hit that applied damage, before OnDeath. */
+	FNFOnDamageTakenNative OnDamageTaken;
+
 	static const FName HeadTag;
 	static const FName LimbTag;
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UFUNCTION()
 	void OnRep_Health(float OldHealth);
@@ -101,4 +130,17 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_IsDead, VisibleInstanceOnly, BlueprintReadOnly, Category = "Health")
 	bool bIsDead = false;
+
+private:
+	void RegenTick();
+	void EndTimedInvulnerability();
+
+	float RegenDelay = 0.f;
+	float RegenRate = 0.f;
+	float RegenCap = 0.f;
+	bool bRegenEnabled = false;
+	float LastDamageTime = -1000.f;
+
+	FTimerHandle RegenTimerHandle;
+	FTimerHandle InvulnerableTimerHandle;
 };

@@ -2,9 +2,17 @@
 #include "NewFPS.h"
 #include "Components/PrimitiveComponent.h"
 #include "Engine/HitResult.h"
+#include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Controller.h"
 #include "Net/UnrealNetwork.h"
+#include "TimerManager.h"
+
+namespace NFHealth
+{
+	/** Seconds between regeneration steps. */
+	const float RegenInterval = 0.25f;
+}
 
 const FName UNFHealthComponent::HeadTag(TEXT("NF.Head"));
 const FName UNFHealthComponent::LimbTag(TEXT("NF.Limb"));
@@ -63,7 +71,12 @@ float UNFHealthComponent::ApplyDamage(const FNFDamageInfo& DamageInfo)
 	}
 
 	Health -= FinalDamage;
+	if (const UWorld* World = GetWorld())
+	{
+		LastDamageTime = World->GetTimeSeconds();
+	}
 	OnHealthChanged.Broadcast(this, Health, -FinalDamage, DamageInfo.Instigator);
+	OnDamageTaken.Broadcast(DamageInfo, FinalDamage);
 
 	if (Health <= 0.f)
 	{
@@ -93,6 +106,127 @@ void UNFHealthComponent::Revive()
 	}
 
 	OnHealthChanged.Broadcast(this, Health, Health - OldHealth, nullptr);
+}
+
+void UNFHealthComponent::ReviveTo(float NewHealth)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority())
+	{
+		return;
+	}
+
+	const float OldHealth = Health;
+	Health = FMath::Clamp(NewHealth, 1.f, MaxHealth);
+
+	if (bIsDead)
+	{
+		bIsDead = false;
+		OnRevived.Broadcast(this);
+	}
+
+	OnHealthChanged.Broadcast(this, Health, Health - OldHealth, nullptr);
+}
+
+void UNFHealthComponent::Kill(AController* Killer)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority() || bIsDead)
+	{
+		return;
+	}
+
+	const float OldHealth = Health;
+	Health = 0.f;
+	bIsDead = true;
+	OnHealthChanged.Broadcast(this, Health, -OldHealth, Killer);
+	OnDeath.Broadcast(this, Killer);
+}
+
+void UNFHealthComponent::SetMaxHealth(float NewMaxHealth, bool bRefill)
+{
+	// The maximum is plain data every machine can set; the current health is the server's.
+	MaxHealth = FMath::Max(NewMaxHealth, 1.f);
+
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->HasAuthority())
+	{
+		Health = bRefill ? MaxHealth : FMath::Min(Health, MaxHealth);
+	}
+}
+
+void UNFHealthComponent::SetInvulnerableFor(float Seconds)
+{
+	UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.f)
+	{
+		return;
+	}
+
+	bInvulnerable = true;
+	World->GetTimerManager().SetTimer(InvulnerableTimerHandle, this, &UNFHealthComponent::EndTimedInvulnerability, Seconds, false);
+}
+
+void UNFHealthComponent::EndTimedInvulnerability()
+{
+	bInvulnerable = false;
+}
+
+void UNFHealthComponent::ConfigureRegen(float DelaySeconds, float RatePerSecond, float CapHealth)
+{
+	RegenDelay = FMath::Max(DelaySeconds, 0.f);
+	RegenRate = FMath::Max(RatePerSecond, 0.f);
+	RegenCap = CapHealth;
+}
+
+void UNFHealthComponent::SetRegenEnabled(bool bEnabled)
+{
+	const AActor* Owner = GetOwner();
+	UWorld* World = GetWorld();
+	if (!Owner || !Owner->HasAuthority() || !World || bRegenEnabled == bEnabled)
+	{
+		return;
+	}
+
+	bRegenEnabled = bEnabled;
+	if (bEnabled)
+	{
+		World->GetTimerManager().SetTimer(RegenTimerHandle, this, &UNFHealthComponent::RegenTick, NFHealth::RegenInterval, true);
+	}
+	else
+	{
+		World->GetTimerManager().ClearTimer(RegenTimerHandle);
+	}
+}
+
+void UNFHealthComponent::RegenTick()
+{
+	const UWorld* World = GetWorld();
+	if (!World || bIsDead || RegenRate <= 0.f)
+	{
+		return;
+	}
+
+	const float Cap = RegenCap > 0.f ? FMath::Min(RegenCap, MaxHealth) : MaxHealth;
+	if (Health >= Cap || World->GetTimeSeconds() - LastDamageTime < RegenDelay)
+	{
+		return;
+	}
+
+	const float OldHealth = Health;
+	Health = FMath::Min(Health + RegenRate * NFHealth::RegenInterval, Cap);
+	OnHealthChanged.Broadcast(this, Health, Health - OldHealth, nullptr);
+}
+
+void UNFHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RegenTimerHandle);
+		World->GetTimerManager().ClearTimer(InvulnerableTimerHandle);
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void UNFHealthComponent::OnRep_Health(float OldHealth)

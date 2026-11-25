@@ -10,7 +10,9 @@ class UInputAction;
 class UInputMappingContext;
 class UNFCharacterMovementComponent;
 class UNFHealthComponent;
+class UNFInteractionComponent;
 class UNFMovementData;
+class UNFRulesData;
 class UNFWeaponComponent;
 class UNFWetnessComponent;
 class USkeletalMeshComponent;
@@ -19,7 +21,8 @@ struct FInputActionValue;
 
 /**
  * First-person player character: camera, first-person arms/weapon slots, input, and glue between the
- * movement, weapon and health components. Gameplay logic lives in the components, not here.
+ * movement, weapon, health, wetness and interaction components. Gameplay logic lives in the components; the
+ * one thing owned here is the co-op life cycle (Alive -> Downed -> Out, prototype-spec.md 6.2).
  */
 UCLASS()
 class NEWFPS_API ANFCharacter : public ACharacter
@@ -31,6 +34,8 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PostInitializeComponents() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void RecalculateBaseEyeHeight() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void PawnClientRestart() override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
@@ -48,9 +53,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "NewFPS")
 	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
 
-	/** Water is at or above the depth where weapons stop working (UNFTideData::WeaponsDisabledFrom). */
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	UNFInteractionComponent* GetInteractionComponent() const { return InteractionComponent; }
+
+	/** Never null: falls back to the UNFRulesData class defaults (the spec's starting values). */
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	const UNFRulesData* GetRules() const;
+
+	/** The firearm in hand cannot be fired because of the water depth or the strongbox (see UNFWeaponComponent::EvaluateUse). */
 	UFUNCTION(BlueprintPure, Category = "NewFPS")
 	bool IsWeaponBlockedByWater() const;
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	ENFLifeState GetLifeState() const { return LifeState; }
+
+	/** Seconds a downed player has left before the lifeline pulls them out. */
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	float GetBleedoutRemaining() const { return BleedoutRemaining; }
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	bool IsCarrying() const;
+
+	/** Server only: get a downed player back up. Returns false when the player is not downed. */
+	bool AuthReviveFromDowned(float NewHealth, float InvulnerableSeconds);
+
+	/** Called by the interaction component on every machine when the strongbox is picked up or put down. */
+	void HandleCarryStateChanged(bool bNowCarrying);
 
 protected:
 	// ---- Components ----
@@ -84,11 +112,30 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UNFWetnessComponent> WetnessComponent;
 
+	/** Hold-to-interact (pick up, revive) and strongbox carrying. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UNFInteractionComponent> InteractionComponent;
+
+	/**
+	 * Stand-in for the carried strongbox in first person: lower left corner of the view, owner only
+	 * (spec 2.3: the load must read without a HUD). Replace with the real arm/box pose when it exists.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> CarryProxyFirstPerson;
+
+	/** Stand-in for the carried strongbox as other players see it. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> CarryProxyThirdPerson;
+
 	// ---- Data ----
 
 	/** Movement tuning. Leave empty to use the class defaults of UNFMovementData. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Movement")
 	TObjectPtr<UNFMovementData> MovementData;
+
+	/** Health, downed/revive, strongbox and interaction numbers. Leave empty to use the class defaults of UNFRulesData. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Rules")
+	TObjectPtr<UNFRulesData> RulesData;
 
 	/** Socket on FirstPersonArms the weapon attaches to. If it does not exist the weapon hangs from the camera. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Presentation")
@@ -117,6 +164,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View", meta = (ClampMin = "0.0"))
 	float CrouchCameraInterpSpeed = 12.f;
+
+	/** The camera sits this much lower while downed (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View", meta = (ClampMin = "0.0"))
+	float DownedCameraDrop = 100.f;
 
 	// ---- Input assets (create in the editor and assign in the character Blueprint) ----
 
@@ -157,6 +208,31 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
 	TObjectPtr<UInputAction> ReloadAction;
 
+	/** Raise the other firearm. While carrying a strongbox this drops it instead. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> SwitchWeaponAction;
+
+	/** Purser directly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> SlotOneAction;
+
+	/** Gaffer directly. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> SlotTwoAction;
+
+	/** Kedge swing: its own button, no weapon switch. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> MeleeAction;
+
+	/** Hold: pick up a strongbox / revive a teammate. Press while carrying: drop. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> InteractAction;
+
+	virtual void BeginPlay() override;
+
+	UFUNCTION()
+	void OnRep_LifeState();
+
 private:
 	void ApplyMovementData();
 	void BuildFallbackInput();
@@ -172,6 +248,15 @@ private:
 	/** Server only, on a timer while the head is under water. */
 	void ApplyDrownDamage();
 
+	/** Apply the presentation and locks of LifeState on this machine. */
+	void ApplyLifeState();
+	void AuthEnterDowned();
+	void AuthEnterOut();
+	/** Server only, on a timer while downed. */
+	void AuthTickBleedout();
+	void RemoveInputMappingLocal();
+	void UpdatePlaceholderBody();
+
 	void Input_Move(const FInputActionValue& Value);
 	void Input_Look(const FInputActionValue& Value);
 	void Input_LookStick(const FInputActionValue& Value);
@@ -186,11 +271,28 @@ private:
 	void Input_AimStarted();
 	void Input_AimCompleted();
 	void Input_Reload();
+	void Input_SwitchWeapon();
+	void Input_SlotOne();
+	void Input_SlotTwo();
+	void Input_Melee();
+	void Input_InteractStarted();
+	void Input_InteractCompleted();
+	void SelectSlotOrDrop(int32 Slot);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNFCharacterMovementComponent> NFMovement;
 
+	UPROPERTY(ReplicatedUsing = OnRep_LifeState)
+	ENFLifeState LifeState = ENFLifeState::Alive;
+
+	UPROPERTY(Replicated)
+	float BleedoutRemaining = 0.f;
+
 	FTimerHandle DrownTimerHandle;
+	FTimerHandle BleedoutTimerHandle;
 	bool bSprintHeld = false;
 	float CrouchEyeOffset = 0.f;
+	float DownedEyeOffset = 0.f;
+	/** Eye height above the capsule centre while standing (from the movement data). */
+	float StandingBaseEyeHeight = 74.f;
 };
