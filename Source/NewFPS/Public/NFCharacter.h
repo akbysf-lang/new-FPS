@@ -1,0 +1,176 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Character.h"
+#include "NFCharacter.generated.h"
+
+class UCameraComponent;
+class UInputAction;
+class UInputMappingContext;
+class UNFCharacterMovementComponent;
+class UNFHealthComponent;
+class UNFMovementData;
+class UNFWeaponComponent;
+class USkeletalMeshComponent;
+class UStaticMeshComponent;
+struct FInputActionValue;
+
+/**
+ * First-person player character: camera, first-person arms/weapon slots, input, and glue between the
+ * movement, weapon and health components. Gameplay logic lives in the components, not here.
+ */
+UCLASS()
+class NEWFPS_API ANFCharacter : public ACharacter
+{
+	GENERATED_BODY()
+
+public:
+	ANFCharacter(const FObjectInitializer& ObjectInitializer);
+
+	virtual void Tick(float DeltaSeconds) override;
+	virtual void PostInitializeComponents() override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void PawnClientRestart() override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	UNFWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	UNFHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "NewFPS")
+	UCameraComponent* GetFirstPersonCamera() const { return FirstPersonCamera; }
+
+protected:
+	// ---- Components ----
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UCameraComponent> FirstPersonCamera;
+
+	/** First-person arms, visible to the owner only. Assign the mesh and AnimBP in the character Blueprint. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonArms;
+
+	/** First-person weapon (skeletal variant). Mesh comes from UNFWeaponData::WeaponSkeletalMesh. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<USkeletalMeshComponent> FirstPersonWeaponSkeletal;
+
+	/** First-person weapon (static variant). Mesh comes from UNFWeaponData::WeaponStaticMesh. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> FirstPersonWeaponStatic;
+
+	/** Grey-box stand-in so other players are visible before a third-person mesh exists. Clear its mesh once one does. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UNFWeaponComponent> WeaponComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UNFHealthComponent> HealthComponent;
+
+	// ---- Data ----
+
+	/** Movement tuning. Leave empty to use the class defaults of UNFMovementData. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Movement")
+	TObjectPtr<UNFMovementData> MovementData;
+
+	/** Socket on FirstPersonArms the weapon attaches to. If it does not exist the weapon hangs from the camera. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Presentation")
+	FName WeaponAttachSocketName = TEXT("GripPoint");
+
+	/** Weapon placement relative to the camera when there are no arms / no socket. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Presentation")
+	FTransform WeaponCameraOffset;
+
+	// ---- View ----
+
+	/** Hip-fire horizontal FOV. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View", meta = (ClampMin = "60.0", ClampMax = "120.0"))
+	float DefaultFOV = 95.f;
+
+	/** Degrees per unit of mouse delta. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View", meta = (ClampMin = "0.01"))
+	float MouseSensitivity = 1.f;
+
+	/** Degrees per second at full stick deflection (X = yaw, Y = pitch). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View")
+	FVector2D GamepadLookRate = FVector2D(220.0, 140.0);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View")
+	bool bInvertLookY = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|View", meta = (ClampMin = "0.0"))
+	float CrouchCameraInterpSpeed = 12.f;
+
+	// ---- Input assets (create in the editor and assign in the character Blueprint) ----
+
+	/**
+	 * When an input asset below is left empty, a keyboard/mouse + gamepad default is built in code so the
+	 * prototype is playable without any assets. Assigning DefaultMappingContext turns the fallback off.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputMappingContext> DefaultMappingContext;
+
+	/** Axis2D: X = right, Y = forward. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> MoveAction;
+
+	/** Axis2D mouse delta: X = right, Y = up. Do not add a Negate modifier; use bInvertLookY. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> LookAction;
+
+	/** Axis2D stick position (rate based): X = right, Y = up. Optional. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> LookStickAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> JumpAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> CrouchAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> SprintAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> FireAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> AimAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "NewFPS|Input")
+	TObjectPtr<UInputAction> ReloadAction;
+
+private:
+	void ApplyMovementData();
+	void BuildFallbackInput();
+	void HandleWeaponVisualsReady();
+	void AddLook(float YawDelta, float PitchDelta);
+
+	UFUNCTION()
+	void HandleDeath(UNFHealthComponent* InHealthComponent, AController* Killer);
+
+	void Input_Move(const FInputActionValue& Value);
+	void Input_Look(const FInputActionValue& Value);
+	void Input_LookStick(const FInputActionValue& Value);
+	void Input_JumpStarted();
+	void Input_JumpCompleted();
+	void Input_CrouchStarted();
+	void Input_CrouchCompleted();
+	void Input_SprintStarted();
+	void Input_SprintCompleted();
+	void Input_FireStarted();
+	void Input_FireCompleted();
+	void Input_AimStarted();
+	void Input_AimCompleted();
+	void Input_Reload();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UNFCharacterMovementComponent> NFMovement;
+
+	bool bSprintHeld = false;
+	float CrouchEyeOffset = 0.f;
+};

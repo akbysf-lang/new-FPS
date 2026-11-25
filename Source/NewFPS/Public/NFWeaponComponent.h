@@ -214,8 +214,8 @@ protected:
 
 private:
 	APawn* GetOwnerPawn() const;
-	bool IsLocallyControlled() const;
-	bool HasAuthority() const;
+	bool IsOwnerLocallyControlled() const;
+	bool OwnerHasAuthority() const;
 	bool IsOwnerDead() const;
 	bool GetAimView(FVector& OutLocation, FRotator& OutRotation) const;
 
