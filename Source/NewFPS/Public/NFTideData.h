@@ -156,13 +156,13 @@ public:
 	// ---- Wetness thresholds (water depth above the feet) ----
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
-	float KneeDepth = 45.f;
+	float KneeDepth = 50.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
-	float WaistDepth = 105.f;
+	float WaistDepth = 100.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))
-	float OverheadDepth = 175.f;
+	float OverheadDepth = 165.f;
 
 	/** The water must drop this far below a threshold before the state steps back down (stops flicker at the waterline). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Wetness", meta = (ClampMin = "0.0", Units = "cm"))

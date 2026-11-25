@@ -184,3 +184,17 @@ Tüm kaynak `Source/NewFPS/` altında (`Public/` başlıklar, `Private/` gövdel
 6. **`Config/DefaultEngine.ini` çarpışma profilleri** (`+EditProfiles`): elle yazıldı. Yanlışsa derlemeyi bozmaz, ama tetikleyici hacimler mermiyi durdurur; **Project Settings → Collision**'da `Weapon` kanalını ve Trigger/Overlap profillerini kontrol edin.
 7. **Fare dikey yönü**: `Mouse XY 2D-Axis` Y değerinin yukarı = pozitif olduğu varsayıldı. Tersse `bInvertLookY`.
 8. **Hedefin kızarması**: motorun `BasicShapeMaterial`'ında `Color` parametresi olduğu varsayıldı; yoksa yalnız büyüme tepkisi görünür.
+
+## Git LFS (ilk ikili varlıktan önce, bir kez)
+
+Depodaki `.gitattributes`, `.uasset`, `.umap`, FBX, doku ve ses dosyalarını Git LFS'e yönlendirir. Editörde ilk varlığı kaydetmeden önce kendi makinenizde bir kez çalıştırın:
+
+```bash
+git lfs install
+```
+
+LFS kurulu değilken eklenen ikili dosyalar depoya doğrudan girer ve sonradan taşımak zahmetlidir.
+
+## Gelgit sistemi
+
+Mimari ve doğrulama adımları: [adr-001-tide-and-network.md](adr-001-tide-and-network.md). Seviyeye bir `ANFTideManager` yerleştirin; `NFTideData` varlığı atanmazsa sınıf varsayılanları (yer tutucu, 4 dakikalık döngü) kullanılır. Designer'ın 12 dakikalık çizelgesi `docs/studio/design/prototype-spec.md` içindedir ve bir `NFTideData` varlığına girilmelidir.
