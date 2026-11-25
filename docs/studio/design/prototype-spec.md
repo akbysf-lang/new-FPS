@@ -1,6 +1,6 @@
 # EBBSHIFT — Prototip Spesifikasyonu (Aşama 3)
 
-**Hazırlayan:** game-designer · **Tarih:** 25 Kasım 2026 · **Durum:** v1 — uygulamaya hazır
+**Hazırlayan:** game-designer · **Tarih:** 25 Kasım 2026 · **Durum:** v1, Revizyon 2 (artist incelemesi sonrası düzeltmeler; değişiklik dökümü §12) — uygulamaya hazır
 **Bağlı belgeler:** [game-story.md](game-story.md) (§3 dünya kuralları, §9 teslim listeleri) · [market-research.md](market-research.md) (§6 geri çekilme kapısı, §7 konsept)
 
 > Belge dili Türkçe; oyun içi adlar ve satırlar İngilizce.
@@ -93,8 +93,8 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 | Değer | Başlangıç | Gerekçe |
 |---|---|---|
 | Kapsül yarıçap / yarı yükseklik | 34 / 90 (boy 180) | fps-level-design metrikleri |
-| Göz yüksekliği (ayakta / çömelmiş) | 164 / 104 | 110'luk alçak siper çömelmiş gözü tam kapatır, ayakta üstünden ateş edilir |
-| Çömelmiş kapsül yarı yüksekliği | 60 (boy 120) | |
+| Göz yüksekliği (ayakta / çömelmiş) | 164 / 104 (zeminden). Kapsül merkezine göre: `BaseEyeHeight` **74**, `CrouchedEyeHeight` **49** | 110'luk alçak siper çömelmiş gözü tam kapatır, ayakta üstünden ateş edilir |
+| Çömelmiş kapsül yarı yüksekliği | **55 cm** (çömelmiş boy 110; yarıçap 34 aynı) | Çömelmiş kapsülün üstü alçak siperle (110) **aynı kotta**: siperin arkasında çömelen oyuncuya aynı kottan gelen mermi değemez. Eski değer 60 (boy 120) siperin 10 cm üstünde kalıyordu. Siper 110 kalır; değişen çömelmedir. Haritada 230'dan alçak tavan yok, göz ile kapsül üstü arasındaki 6 cm sorun çıkarmaz |
 | Dünya FOV | 95 (ayar 70–120) | PC varsayılanı; dikey okuma (yukarıdaki düşman, aşağıdaki su) geniş FOV ister |
 | Silah (viewmodel) FOV | 70, dünya FOV'undan bağımsız | |
 | Head-bob / screen shake | Düşük; ikisi de kapatılabilir | |
@@ -118,7 +118,7 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 | Coyote time / jump buffer | 0,10 / 0,10 | |
 | `MaxStepHeight` | 45 | |
 | Yürünebilir eğim | ≤ 40°; haritadaki en dik rampa 26,6° | |
-| Silah değiştirme | 0,40 | Skill: < 0,5 sn |
+| Silah değiştirme | 0,40 | Skill: < 0,5 sn. Yalnız Purser ↔ Gaffer için geçerlidir; **Kedge silah yuvası değildir**, ayrı tuşla silah değiştirmeden savrulur (§4.3) |
 
 ### 2.3 Sandık taşırken
 
@@ -129,7 +129,8 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 | Zıplama | `JumpZVelocity` 360 → 55 cm | Basamak ve küçük engel geçilir |
 | Çömelme | Var, 200 | |
 | Silah | Yalnız **Purser**, yalnız hip-fire; ADS yok; **şarjör değiştirilemez** (tek el) | Purser'ın "işi" bu (hikâye §9.6). 6 mermi biter → sandığı bırak ya da arkadaşına güven |
-| Kedge / Gaffer | Kullanılamaz | |
+| Kedge / Gaffer | Kullanılamaz | Sol kol sandıkta |
+| Kadraj | Strongbox **görünür**: sol kolun altında, ekranın sol alt köşesinde (ekran alanının en çok ~%15'i; nişangâha ve ekran merkezine taşmaz). Purser sağ elde, bel hizasında eğik | Oyuncu ve klibi izleyen "yük taşıyor"u HUD'sız okur; tek el / reload yok / Kedge yok kuralının görsel nedeni budur. Prototipte kameraya bağlı vekil kutu yeter |
 | Bırakma | Anında (tuş ya da silah değiştirme); sandık olduğu yere düşer, fırlatılmaz | |
 | Alma | 0,5 sn basılı tut | |
 | Hasar alınca | Düşmez; yalnız oyuncu düşerse (0 can) bırakılır | Her vuruşta düşen sandık sinir bozar |
@@ -209,9 +210,15 @@ Derinlik `d = Su Z − ayak Z`. Oyuncu ve AI aynı ölçümü kullanır; eşikle
 | **Knee** (diz) | 50–99 | Tüm hızlar **×0,75** (yürüme 375, yüklü 300); zıplama ×0,8 | Etki yok | Ayak sesi yüksek |
 | **Waist** (bel) | 100–164 | **×0,5** (yürüme 250, yüklü 200); koşu ve zıplama yok | Gaffer kullanılamaz (iki el; otomatik Purser'a geçer). Purser yalnız hip-fire, yayılım ×1,5, reload süresi ×1,25 | Sandık alınabilir/taşınabilir |
 | ↳ alt eşik **Chest** (göğüs) | 135–164 | ×0,4 (yürüme 200) | **Ateşli silah yok**; yalnız Kedge | Sandık alınamaz (eldeki taşınmaya devam eder) |
-| **Head** (baş) | ≥ 165 | ×0,4 | Hiçbiri | Nefes 8 sn, sonra 20 can/sn. Eldeki sandık düşer |
+| **Overhead** (baş üstü) | ≥ 165 | ×0,4 | Hiçbiri | Nefes 8 sn, sonra 20 can/sn. Eldeki sandık düşer |
 
-Gerekçe: hikâye §3 kural 3 ile birebir (diz üstü yavaşlar, göğüste silah yok, baş üstünde boğulur). Bel eşiği ayrıca Wardens'ın kısa devre eşiğidir; oyuncu "ben belime kadar girebilirim, o giremez" asimetrisini öğrenir. Dört durum hikâye §9.6'daki ortak `wetness` enum'una uyar; göğüs yalnızca Waist içinde bir sabittir.
+Gerekçe: hikâye §3 kural 3 ile birebir (diz üstü yavaşlar, göğüste silah yok, baş üstünde boğulur). Bel eşiği ayrıca Wardens'ın kısa devre eşiğidir; oyuncu "ben belime kadar girebilirim, o giremez" asimetrisini öğrenir.
+
+**Adlar koddaki `ENFWetness` ile aynıdır: `Dry`, `Knee`, `Waist`, `Overhead`** (eski "Head" adı kaldırıldı; `Head` yalnızca isabet bölgesidir, §4). Göğüs ayrı bir enum değeri değil, Waist içinde bir derinlik sabitidir (`ChestDepth` = 135).
+
+**Silah kuralı (bağlayıcı, tek cümle):** ateşli silah kilidi ıslaklık durumuna değil derinliğe bağlıdır — **d < 100: tüm silahlar; 100 ≤ d < 135 (Waist): Gaffer yok, Purser yalnız hip-fire; d ≥ 135 (`ChestDepth`): ateşli silah yok, yalnız Kedge; d ≥ 165 (Overhead): hiçbiri.** Koddaki "Waist: weapons cannot be used" yorumu ve `WeaponsDisabledFrom = Waist` varsayılanı bu kurala göre düzeltilir; "TOO DEEP TO SHOOT" uyarısı Waist'te değil d ≥ 135'te gösterilir.
+
+Eşik özeti (su renk geçişi ve materyal için de bunlar geçerlidir): diz **50**, bel **100**, göğüs **135**, baş üstü **165** cm.
 
 ### 3.4 Telgraf zamanlaması
 
@@ -310,9 +317,14 @@ Koni çapı ve saçma hasarı (türetilmiş): 5 m → 61 cm / 15 · 7 m → 86 c
 | Vuruş aralığı | 0,60 (100 vuruş/dk); tuştan isabete 0,15 |
 | Erişim | 180 cm, 60° koni, ilk temas eden tek hedef |
 | İtme | Scuttler 200 cm, Attendant 100 cm |
-| Kullanım | Göğüs hizasına kadar suda çalışır; sandık taşırken çalışmaz |
+| Tutuş | **Silah yuvası değil, ayrı yakın dövüş tuşu.** Silah değiştirmeden **sol elle** savrulur; sağ el ateşli silahı tutmaya devam eder. 0,40'lık silah değiştirme süresi Kedge'e uygulanmaz (0,15'lik isabet bu yüzden mümkün) |
+| Savurma sırasında | 0,60 boyunca ateş ve ADS kilitli (ADS'deyse çıkar); koşu kesilir. Savurma bitince silah anında hazırdır. Gerekçe: Purser + Kedge hasarı üst üste binmesin; yakın dövüş bir tercih olsun |
+| Reload ile ilişkisi | **Savurma reload'u iptal eder:** süren reload kesilir, ilerlemesi sıfırlanır, mermi verilmez; kendiliğinden yeniden başlamaz (oyuncu tekrar başlatır). Reload sürerken savurma tuşu her zaman kabul edilir. Gerekçe: sol el ya fişek sürer ya savurur. Kedge "pompa dolarken" boşluğu doldurur ama bedeli reload'dur: karar oyuncuda |
+| Kullanım | Göğüs hizasına kadar suda (d < 165) çalışır; d ≥ 135'te eldeki tek araçtır (ateşli silah iner, Kedge hazır bekler). Sandık taşırken çalışmaz (sol kol sandıkta) |
 
 **İşi:** son çare ve "mermi bitti, pompa dolarken" boşluğu. Kurumuş (Parched) Scuttler'ı tek vuruşta öldürür: kuruya çekmenin ödülü.
+
+Ayar adayı (ilk tur verisi gerektirirse): "reload'u kaybettim" şikâyeti yoğunsa iptal yerine duraklat-devam et denenir; bu animasyon işi doğurur, prototipte yapılmaz.
 
 ### 4.4 İskelette olmayan, prototip için gereken alanlar (developer'a istek)
 
@@ -320,9 +332,9 @@ Koni çapı ve saçma hasarı (türetilmiş): 5 m → 61 cm / 15 · 7 m → 86 c
 |---|---|
 | Saçma sayısı | `PelletsPerShot` (int, varsayılan 1). `Damage` saçma başınadır |
 | Taşırken kullanılabilirlik | `bUsableWhileCarrying` (Purser true) |
-| İki el / ıslaklık kısıtı | `MaxUsableWetness` (Gaffer: Knee; Purser: Waist-göğüs altı) |
+| İki el / ıslaklık kısıtı | `MaxUsableWetness` (Gaffer: `Knee`; Purser: `Waist`) + tüm ateşli silahlar için ortak derinlik kilidi `ChestDepth` = 135 (§3.3 silah kuralı). Purser'da Waist'te ADS kapalı |
 | Sendeletme | Hasar olayında tek atışın toplam hasarı düşmana iletilmeli (Attendant eşiği için, §5.2) |
-| Yakın dövüş | Kedge ayrı küçük veri varlığı ya da bileşen; karar developer'da |
+| Yakın dövüş | Kedge ayrı küçük veri varlığı ya da bileşen; karar developer'da. Ayrı girdi eylemi (silah yuvası değil); savurma reload'u iptal eder ve 0,60 boyunca ateş/ADS'yi kilitler (§4.3) |
 
 ### 4.5 TTK tablosu
 
@@ -357,14 +369,15 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Değer | Başlangıç | Gerekçe |
 |---|---|---|
 | Can | 60 | §4.5 |
-| Kapsül | yarıçap 45, yükseklik 70 | Alçak siperin (110) arkasında görünmez: ses önemli |
+| Kapsül | **yarıçap 35 / yarı yükseklik 35** (Ø 70 küre; toplam yükseklik 70) | UE kapsülünde yarı yükseklik yarıçaptan küçük olamaz; eski "yarıçap 45, yükseklik 70" geçersizdi. Tepe 70 (model 68): alçak siperin (110) arkasında 40 cm payla görünmez, ses önemli. Dar kapsül 400'lük geçitlerde (L1, H3) sürünün sıkışmasını azaltır; kabuk (78 en) kapsülden 4'er cm taşar, kabul |
+| İsabet hacimleri | Gövde kutusu (kabuk ölçüsü, `Body`), kese küresi (`Head`), iki kıskaç (`Body`). **Bacaklar isabet almaz** ve çarpışmaya girmez: mermi aralarından geçer | 17'li sürüde 6 bacak × fizik gövdesi pahalı; hedef zaten alçak ve geniş. Playtest'te "bacağa vurdum saymadı" şikâyeti çıkarsa bacak gövdesi eklenmez, gövde kutusu yanlara 10 cm genişletilir |
 | Zayıf nokta | Sırttaki turkuaz kese (`Head` bölgesi), ~25 cm küre; yalnız arkadan/üstten görünür | Yüksek zemindeki oyuncuyu ödüllendirir |
 | **Wet** eşiği | kendi ayağından d ≥ 20 | Terastaki 30 cm suda ıslaktır |
 | Hız — Wet | **504** (×1,4) | Yürüyen oyuncuya (500) eşit, diz suyundaki oyuncudan (375) hızlı |
 | Hız — Dry | **360** | Yüklü oyuncudan (400) yavaş: kuruda taşıyıcı kaçabilir |
 | Hız — Parched | 300 | |
 | Can yenileme — Wet | 2 sn hasarsızlıktan sonra 6 can/sn | Yarım bırakılan Scuttler suda toparlar |
-| **Parched** | Kesintisiz 20 sn Dry kalınca: aldığı hasar ×1,5, renk solar, tıkırtı kurur. Suya girince anında sıfırlanır | "Kuruya çek" karşı oyunu (hikâye §4.2) |
+| **Parched** | Kesintisiz 20 sn Dry kalınca: aldığı hasar ×1,5, tıkırtı kurur. Görsel: **değer sabit kalır (gövde koyu, L* ≤ 26)**; doygunluk düşer, yüzey tam matlaşır, kabuk sırtında ince tebeşir beyazı tuz çizgileri çıkar, kese ışıltısı söner ve süt rengine döner. Suya girince anında sıfırlanır | "Kuruya çek" karşı oyunu (hikâye §4.2). Eski "renk solar" ifadesi gövdeyi açmak demek değildir: açılan gövde kuru zeminle karışır, tam "tek atışlık" hedefin seçileceği anda. Yeterince ayırt edilmezse ikinci aday siluet değişimidir (kabuk kenarlarının pul pul kalkması), değer değişimi değil |
 | Saldırı 1 — **Pinch** | Erişim 150. Telgraf 0,5 sn (kıskaçlar kalkar + tek sert "klak") → 12 hasar → toparlanma 0,8 sn; bekleme 1,5 sn | Geri adımla kaçınılır |
 | Saldırı 2 — **Lunge** (yalnız Wet) | 300–500 mesafeden. Telgraf 0,6 sn (çöker + tıslama, su sıçratır) → 0,4 sn sıçrayış → 18 hasar; ıskalarsa 1,0 sn açıkta | Yana adım; ıskalayan kolay hedef |
 | Saldırı token'ı | **Hedef oyuncu başına 2** eşzamanlı saldıran; token'sız olanlar 250–400 mesafede döner | Okunabilirlik: 6 yengeç aynı anda vurmaz |
@@ -390,14 +403,15 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Değer | Başlangıç | Gerekçe |
 |---|---|---|
 | Can | 150 | §4.5 |
-| Kapsül | yarıçap 40, yükseklik 190 | |
-| Zayıf nokta | Baştaki sinyal lambası (`Head`), ~18 cm yarıçap, Z ≈ 175 | Lamba aynı zamanda telgraf göstergesi: bakılan yer = vurulacak yer |
+| Kapsül | yarıçap 40, yarı yükseklik 95 (toplam yükseklik 190) | |
+| Zayıf nokta | Baştaki sinyal lambası (`Head`). İsabet küresi **yarıçap 18, merkez Z 172** (Z 154–190: kapsül tepesini aşmaz). Görsel lamba merkezi Z 175'te kalır; küre lamba yuvasını (Z 160–190) tümüyle kapsar | Lamba aynı zamanda telgraf göstergesi: bakılan yer = vurulacak yer. Yarıçap küçültülmedi: 12–25 m tercih menzilinde hedef zaten küçük, §4.5'teki %50 zayıf nokta isabet varsayımı bu boyuta göre |
+| Alçak siperde lamba | Attendant 110'luk siperin arkasında diz kırar: gövde gizlenir, **lamba görünür kalır** (lamba merkezi Z ≥ 135; isabet küresi Z 117–153, tamamı siperin üstünde). Tam siperin (200+) arkasında tümüyle gizlidir; yaylım telgrafı her zaman lamba oyuncuya açıkken başlar (önce siperden çıkar, sonra telgraf) | Lamba telgraf göstergesidir; görünmeyen telgraf haksız ölümdür. Alçak siper 150 canlık gövdeyi saklar ama zayıf noktayı açık bırakır: Purser'ın işi |
 | Hız | Devriye 300, yer değiştirme 420 | Yüklü oyuncuyu kovalayamaz; işi alan tutmak |
 | Tercih menzili / azami | 1200–2500 / 3500 | Purser'ın tam hasar bandı (≤ 20 m) içinde |
 | Saldırı 1 — **Punch Burst** | Telgraf 0,7 sn (lamba kırmızı + "klik-klak") → 0,15 sn arayla 3 mermi (yavaş mermi, 3500 cm/sn, öngörüsüz nişan, yayılım 1,5°) → mermi başına 10 hasar → bekleme 2,0 sn | 25 m'de uçuş 0,7 sn: yana yürüyen oyuncu kaçar, duran vurulur. Tam isabetle ~10 can/sn |
 | İlk yaylım | Fark ettikten sonraki ilk yaylım kasten ıskalar | "Zeki görünür"; oyuncuya sipere girme süresi |
-| Servis (reload) | 4 yaylımdan sonra 3,0 sn açıkta, lamba söner | Bark ile fırsat penceresi |
-| Saldırı 2 — **Shove** | Oyuncu ≤ 150: telgraf 0,4 sn (kol geri) → 8 hasar + 300 cm itme | Köşede sıkıştıran oyuncuya karşılık; oyuncuyu suya/rampadan aşağı atabilir |
+| Servis (reload) | 4 yaylımdan sonra 3,0 sn açıkta. Lamba **kırmızıya dönmez ama kararmaz**: sakin renginde (`#FFF4D6`) düşük şiddetle 1 Hz göz kırpar; baş öne eğik, göğüs kapağı açık. Zayıf nokta bu sürede etkin kalır (×2,0) | Bark ile fırsat penceresi. Oyuncunun en çok vurması gereken anda hedef göstergesi kapanmaz. Kural: kırmızı = ateş geliyor, yavaş göz kırpma = savunmasız. Kehribar kullanılmaz (Etkileşim sarısıyla karışır); ikinci işaret baş/kapak pozu |
+| Saldırı 2 — **Shove** | Oyuncu ≤ 150: telgraf 0,4 sn (kol geri) → 8 hasar + 300 cm itme → **toparlanma 0,50 sn** (toplam 0,90; toparlanmada ateş etmez, yer değiştirmez) | Köşede sıkıştıran oyuncuya karşılık; oyuncuyu suya/rampadan aşağı atabilir. Toparlanma, ıskalatan ya da itilen oyuncuya karşılık penceresi verir (0,50 = Purser ile bir zayıf nokta atışı + hazırlık) |
 | Ateş token'ı (küresel) | 1 oyuncu: 2 · 2 oyuncu: 3 · 3–4 oyuncu: 4 | Token'sız olan siperde bekler ya da yer değiştirir |
 | Sendeleme | Tek atışta ≥ 80 hasar (Purser zayıf nokta, Gaffer 6+ saçma): 0,6 sn, telgrafı keser, 150 cm geri iter | Saldırganlığı ödüllendirir; suya itme aracı |
 | **Su: kaçınma** | Kendi ayağından d ≥ 30 olan zemine gönüllü girmez | |
@@ -547,7 +561,7 @@ Lejant: `,` kumsal · `=` Half zemin · `:` çatı (High, yürünür) · `.` Hig
 |---|---|---|---|---|
 | **Low — kumsal** | 0–12000 | 0–6000 | Y/30 (0→200) | Tek eğimli düzlem |
 | Deniz duvarı | 0–12000 | 6000 | 200→400 | 200 yüksek; Half'tan kumsala atlanır (hasar yok), kumsaldan çıkılamaz |
-| İskele güvertesi | 5500–6500 | 2700–6000 | 400 | 1000 geniş, kenarlarda 110 korkuluk (alçak siper); Half ile aynı kot |
+| İskele güvertesi | 5500–6500 | 2700–6000 | 400 | 1000 geniş, kenarlarda 110 **dolu parapet** (alçak siper; açık korkuluk değil, §7.6); Half ile aynı kot |
 | İskele ayakları | 5500–6500 | 1500–6000 | zemin→400 | 100 × 100 kolon, 500 aralık ızgara (tam siper) |
 | **L2 — çökmüş güverte** | 5500–6500 | 1500–2700 | 50→400 | Rampa: koşu 1200, yükseliş 350 (16°), 1000 geniş. Merkezî, doğrudan, **açık**; dibi en erken su alır (bel 5:45) |
 | **L1 — batı merdiveni** | 1500–1900 | 5600–6000 | 187→400 | 400 geniş, koşu 400 (26,6°), iki yanı 250 yüksek duvar. Dar, **korunaklı**; en geç kapanır (bel 6:26) |
@@ -606,8 +620,9 @@ Kural: doğuş noktası oyunculardan en az 1500 cm uzakta ve görüş hattı dı
 |---|---|---|
 | Siperden sipere mesafe (ana rota) | 800–1200 | Yüklü 2–3 sn (skill: 2–4 sn) |
 | Siperden sipere (yan rota) | 500–800 | Yan yol uzun ama korunaklı |
-| Alçak siper / tam siper | 110 / 220+ | Metrikler |
-| Karışım | Kat başına ~%50 alçak, ~%50 tam | Alçak siper **diz suyunda** hâlâ çalışır, **bel suyunda** ancak 10 cm çıkıntı kalır: su siperi de alır. Tam siper ıslakken de siperdir ama çevresinde yavaşsın |
+| Alçak siper / tam siper | 110 / **200+** (arası, 120–190, yapılmaz) | Metrikler; stil rehberi §6 ile aynı. Eski "220+" eşiği 200'e çekildi: 200, ayaktaki oyuncuyu (180) ve Attendant'ı (190) kapatır. Çömelmiş kapsül üstü 110 (§2.1) |
+| Siper sınıfları | **Dolu parapet 110 = alçak siper** (mermiyi durdurur). **Açık korkuluk 110 = siper değildir**: oyuncuyu ve AI'ı durdurur, mermiyi ve görüşü geçirir; siper karışımına sayılmaz. **Kiosk/büfe = tam siper** (300 × 300 × 300). **Oyun makinesi = tam siper** (yükseklik 200, taban en az 80 × 80) | Environment-artist sorusunun yanıtı. Okunaklılık: dolu olan korur, arkasını gördüğün korumaz. Bu belgede siper diye sayılan her 110'luk kenar (iskele güvertesi, çatı parapeti, durak arka duvarı, saksı, bandstand duvarı) doludur; prototipte açık korkuluk zorunlu değildir |
+| Karışım | Kat başına ~%50 alçak, ~%50 tam | Alçak siper **diz suyunda** hâlâ çalışır, **bel suyunda** (d = 100) ancak 10 cm çıkıntı kalır: su siperi de alır. Tam siper ıslakken de siperdir ama çevresinde yavaşsın |
 | Üç durumda test | Her siper kuru / diz / bel su ile gym'de denenir | Hikâye §9.1 |
 | Kumsal | Dalgakıranlar (K–G doğrultulu ahşap perde, 200 yüksek, 1200 uzun, X'te 1500 aralık): doğu–batı görüşünü keser, kuzey–güney koridorları (60 m) açık bırakır. Plaj kulübeleri 300 × 300 × 250 (A çevresi). Tekne enkazı 800 × 300 × 150 (C) | Koridorlar Purser bandında; iskele güvertesinden kumsala atış mümkün, karşı açıları: iskele altı ayaklar ve dalgakıran gölgesi |
 | Sahil yolu | Durak sığınakları 600 × 200 (110 arka duvar), büfeler 300 × 300 × 300, saksılar 200 × 100 × 110; doğu–batı 120 m'lik hat en çok 2500'de bir kırılır | Uzun hat bilinçli kırılır |
@@ -730,7 +745,7 @@ Bu ondan sonra sırada bekleyenler (ilk tur verisi gerektirirse): Purser hasarı
 
 | İş | Bölüm |
 |---|---|
-| Ölçüye uygun **vekil** modeller (ilkel geometri, tek renk): Scuttler (alçak-geniş, sırtta parlak kese), Attendant (dik-ince, başta lamba: beyaz/kırmızı/sönük üç durum) | §5 — siluet 1 sn'de ayırt edilmeli |
+| Ölçüye uygun **vekil** modeller (ilkel geometri, tek renk): Scuttler (alçak-geniş, sırtta parlak kese), Attendant (dik-ince, başta lamba: sakin beyaz / kırmızı / servis = 1 Hz yavaş göz kırpma, üç durum) | §5 — siluet 1 sn'de ayırt edilmeli |
 | Purser ve Gaffer birinci şahıs vekil modelleri + namlu soketi; Strongbox (60 × 40 × 40), dolap, vinç direği | §4, §6.4 |
 | Telgraf göstergeleri: lamba rengi, Scuttler kıskaç kaldırma/çökme pozları (iki poz yeter) | §5 |
 | Geçici ses seti (kaynak kütüphaneden): çan, tannoy cızırtısı, su uğultusu, klik-klak, tıkırtı korosu, tıslama, kepenk, hitmarker/zayıf nokta/öldürme onayı | §3.4, §5 |
@@ -746,3 +761,29 @@ Bu ondan sonra sırada bekleyenler (ilk tur verisi gerektirirse): Purser hasarı
 | Alt kattan vince 60–90 sn | Koşu süresi | Çatışmalı süre olarak yorumlandı; düşmansız yüklü 25–35 sn | §7.4 |
 | Attendant kısa devresi | Çevreye elektrik | Yalnız devre dışı kalma | Elektrik-su kapsam dışı |
 | Scuttler / Attendant ayrıntıları | Arketip tanımı | Sayılar eklendi; kurallar aynı | — |
+
+---
+
+## 12. Revizyon 2 (25 Kasım 2026) — artist incelemesi sonrası
+
+Kaynak: [weapon-character-specs.md](../art/weapon-character-specs.md) §10 ve [style-guide.md](../art/style-guide.md) §13. Hepsi başlangıç değeridir.
+
+| # | Madde | Eski | Yeni | Gerekçe |
+|---|---|---|---|---|
+| 1 | Scuttler kapsülü (§5.1) | yarıçap 45, yükseklik 70 | yarıçap 35 / yarı yükseklik 35 (toplam 70) | Eski değer UE'de geçersiz. Tepe 70: 110'luk siper arkasında görünmezlik korunur; dar geçitlerde sürü daha az sıkışır |
+| 2 | Kedge tutuşu (§4.3, §2.2, §4.4) | Belirsiz; 0,15 isabet ile 0,40 silah değiştirme çelişiyordu | Ayrı tuş, silah değiştirmeden sol el. Savurma reload'u **iptal eder** (ilerleme sıfırlanır), 0,60 boyunca ateş/ADS kilitli | Artist yorumu onaylandı. Sol el aynı anda iki iş yapamaz; bedel reload'dur |
+| 3 | Attendant lamba isabet küresi (§5.2) | yarıçap 18, Z ≈ 175 (kapsülü 3 cm aşıyor) | yarıçap 18, merkez Z 172 (Z 154–190) | Hedef boyutu ve %50 isabet varsayımı korunur; görsel lamba Z 175'te kalır |
+| 3b | Alçak siperde lamba (§5.2) | Tanımsız | Görünür kalır (merkez Z ≥ 135); telgraf her zaman lamba açıkken başlar | Telgraf göstergesi gizlenemez; gövde saklı, zayıf nokta açık |
+| 4 | Servis penceresinde lamba (§5.2, §10) | "Lamba söner" | Kararmaz; sakin renkte 1 Hz göz kırpar, zayıf nokta etkin | En çok vurulması gereken anda hedef kaybolmasın; kehribar Etkileşim sarısıyla karışır |
+| 5 | Islaklık adı (§3.3) | `Head` | `Overhead` (kod: `ENFWetness`) | Tek ad; `Head` yalnız isabet bölgesi |
+| 5b | Waist'te silah kuralı (§3.3, §4.4) | Spec ile kod yorumu çelişiyordu | Kilit derinliğe bağlı: d < 135 Purser hip-fire, d ≥ 135 (`ChestDepth`) ateşli silah yok | Purser'ın "bel suyunda çalışan tek silah" işi korunur |
+| 6 | Shove toparlanma (§5.2) | Yok | 0,50 sn (toplam 0,90) | Artist varsayımı onaylandı; karşılık penceresi |
+| 7 | Çömelmiş kapsül yarı yüksekliği (§2.1) | 60 (boy 120) | 55 (boy 110); göz 104 aynı | Kapsül üstü alçak siperle aynı kot; siper 110 kalır |
+| 8 | Parched görseli (§5.1) | "Renk solar" | Değer sabit; doygunluk kaybı + mat + tuz çizgisi + sönük kese | Artist yorumu onaylandı; Drift koyu bandı bozulmaz |
+| 9 | Scuttler bacakları (§5.1) | Tanımsız | İsabet almaz, çarpışmaz | Sürü maliyeti; yedek: gövde kutusunu genişlet |
+| 9b | Sandık taşırken kadraj (§2.3) | Tanımsız | Strongbox sol alt köşede görünür (≤ ~%15), sol kol sandıkta | Yük HUD'sız okunur; tek el kuralının görsel nedeni |
+| 10 | Kat ve su yükseklikleri (§3.1, §7.1) | — | **Teyit, değişiklik yok:** kat zeminleri Low 0→200 (eğimli) / Half 400 / High 800; su çizgileri Low Water 0 / Half Tide 300 / High Water 830 | Kit kat yüksekliği 400'dür; su çizgisi bantları kat zemininde **değil**, 300 ve 830'dadır |
+| 10b | Tam siper eşiği (§7.6) | 220+ | 200+ | Stil rehberiyle tek eşik |
+| 10c | Siper sınıfları (§7.6, §7.3) | Tanımsız; iskelede "korkuluk (alçak siper)" | Dolu parapet = alçak siper; açık korkuluk = siper değil, mermi geçirir; kiosk ve oyun makinesi = tam siper; iskele kenarı dolu parapet | Environment-artist sorusu |
+
+**Bağlı tabloların denetimi:** bu revizyonda hasar, can, RPM, hareket hızı, su eğrisi ve harita koordinatı **değişmedi**. §4.5 TTK tablosu (Kedge 40 hasar / 0,60 aralık aynı), §3.2 hesaplanmış anlar, §6.1 ölüm süresi ve §7.4 rota süreleri yeniden gözden geçirildi; hiçbir satır değişmiyor. Savurma sırasındaki ateş kilidi sürekli hasar rakamlarını (Purser 125, Kedge 67 can/sn) değiştirmez; yalnız ikisinin toplanamayacağını kesinleştirir.
