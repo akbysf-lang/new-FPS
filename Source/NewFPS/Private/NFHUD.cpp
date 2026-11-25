@@ -3,6 +3,7 @@
 #include "NFGameState.h"
 #include "NFHealthComponent.h"
 #include "NFInteractionComponent.h"
+#include "NFSupplyPoint.h"
 #include "NFTideData.h"
 #include "NFTideManager.h"
 #include "NFWeaponComponent.h"
@@ -250,11 +251,62 @@ void ANFHUD::DrawMission(const ANFCharacter* ViewedCharacter)
 	}
 
 	const ENFInteraction Active = Interaction->GetActiveInteraction();
+
+	// Supply point prompt (spec 6.1, 4.2): what is in reach, what it does, and how many uses the team has left.
+	// Chest deep the server refuses the hold (same rule as lifting a strongbox), so no prompt there either.
+	const ANFSupplyPoint* NearSupply = nullptr;
+	if (ViewedCharacter->GetLifeState() == ENFLifeState::Alive && !Interaction->IsCarrying())
+	{
+		const UNFWetnessComponent* Wetness = ViewedCharacter->GetWetnessComponent();
+		if (!Wetness || Wetness->GetWaterDepth() < Wetness->GetTideData()->ChestDepth)
+		{
+			NearSupply = Interaction->FindSupplyPointInRange(/*bUsableOnly*/ false);
+		}
+	}
+	const bool bFirstAid = NearSupply && NearSupply->GetSupplyType() == ENFSupplyType::FirstAid;
+	if (NearSupply && Active == ENFInteraction::None)
+	{
+		FString PromptText;
+		FLinearColor PromptColor = FLinearColor::White;
+		if (!bFirstAid)
+		{
+			PromptText = TEXT("HOLD INTERACT - AMMO");
+		}
+		else
+		{
+			const int32 UsesLeft = NearSupply->GetRemainingUsesFor(ViewedCharacter);
+			if (UsesLeft <= 0)
+			{
+				PromptText = TEXT("FIRST AID - EMPTY");
+				PromptColor = FLinearColor(0.5f, 0.5f, 0.5f);
+			}
+			else if (NearSupply->CanBeUsedBy(ViewedCharacter))
+			{
+				PromptText = FString::Printf(TEXT("HOLD INTERACT - FIRST AID (%d LEFT)"), UsesLeft);
+			}
+			else
+			{
+				// Full health: nothing to hold for, but the count is worth knowing.
+				PromptText = FString::Printf(TEXT("FIRST AID (%d LEFT)"), UsesLeft);
+				PromptColor = FLinearColor(0.5f, 0.5f, 0.5f);
+			}
+		}
+		DrawText(PromptText, PromptColor, CenterX - 150.f, PromptY, nullptr, 1.2f);
+	}
+
 	if (Active != ENFInteraction::None)
 	{
 		const float BarWidth = 200.f;
 		const float Progress = Interaction->GetInteractionProgress();
-		const FString Label = Active == ENFInteraction::Revive ? TEXT("REVIVING") : TEXT("LIFTING");
+		FString Label = TEXT("LIFTING");
+		if (Active == ENFInteraction::Revive)
+		{
+			Label = TEXT("REVIVING");
+		}
+		else if (Active == ENFInteraction::Supply)
+		{
+			Label = bFirstAid ? TEXT("PATCHING UP") : TEXT("RESTOCKING");
+		}
 		DrawText(Label, FLinearColor::White, CenterX - 40.f, PromptY + 28.f, nullptr, 1.2f);
 		DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.5f), CenterX - BarWidth * 0.5f, PromptY + 52.f, BarWidth, 8.f);
 		DrawRect(FLinearColor::White, CenterX - BarWidth * 0.5f, PromptY + 52.f, BarWidth * Progress, 8.f);

@@ -17,14 +17,17 @@ class UStaticMeshComponent;
  *    The first burst after it notices a player misses on purpose. Needs one of the global fire tokens.
  *  - Service window: after 4 bursts it stands exposed for 3 s (visual state Vulnerable, lamp blinks at 1 Hz).
  *  - Shove (AttackId 2): player within 150 cm -> 0.4 s telegraph, 8 damage + a 300 cm push, 0.5 s recovery.
- *  - Water: slowed from knee depth, shorts out (dies) after 2 s at waist depth, walks to higher ground when the
- *    rising water gets within 150 cm of its feet.
+ *  - Water: slowed from knee depth, shorts out (dies) after 2 s at waist depth. Spec 5.2.1 K1-K4: never picks
+ *    a move goal standing AvoidDepth (40) deep, walks out at once when its own feet are that deep, and walks to
+ *    higher ground (floor to floor +50, a random one of the highest spots) when the rising water gets within
+ *    150 cm of its feet - except on the top level (floor Z >= 750), where it stays.
  *
  * Capsule 40 / 95. Hit volumes: a body capsule (Body) and the lamp sphere, radius 18 with its centre 172 cm
  * above the floor (weak point).
  *
  * Not implemented in the prototype: taking cover (it repositions to a random reachable spot instead), kneeling
- * behind low cover, patrol routes, barks.
+ * behind low cover, patrol routes, barks, a NavMesh path cost for water (K5: a path through water is caught by
+ * the escape rule instead).
  */
 UCLASS()
 class NEWFPS_API ANFAttendant : public ANFEnemyBase
@@ -108,6 +111,10 @@ private:
 	void ThinkEngage(APawn* Target, float Distance);
 	bool TryStartRetreat();
 	void TryReposition(APawn* Target);
+	/** World Z of the floor under its feet (capsule bottom). All water rules compare floor to floor (spec 5.2.1). */
+	float GetOwnFloorZ() const;
+	/** K1: would it stand AvoidDepth or deeper at this NavMesh point? */
+	bool IsFloorTooDeep(const FVector& FloorPoint) const;
 	void FireProjectile(APawn* Target, bool bMissOnPurpose);
 	void ReleaseFireToken();
 	void BlinkLamp();
@@ -132,6 +139,7 @@ private:
 	float NextShoveTime = 0.f;
 	float NextMoveOrderTime = 0.f;
 	float NextRepositionTime = 0.f;
+	float NextRetreatSearchTime = 0.f;
 	int32 ShotsFiredInBurst = 0;
 	int32 BurstsSinceService = 0;
 	bool bHasFireToken = false;

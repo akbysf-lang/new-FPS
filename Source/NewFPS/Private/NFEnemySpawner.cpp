@@ -206,6 +206,8 @@ void ANFEnemySpawner::AuthResetToTime(float ElapsedSeconds)
 
 	const TArray<FNFWaveEntry>& Waves = GetWaveData()->Waves;
 	PendingWaves.Reset();
+	SkippedNoPointCount = 0;
+	SkippedCapFullCount = 0;
 	NextWaveIndex = 0;
 	while (NextWaveIndex < Waves.Num() && Waves[NextWaveIndex].TimeSeconds < ElapsedSeconds)
 	{
@@ -249,7 +251,7 @@ void ANFEnemySpawner::PollWaves()
 		}
 		else if (++Pending.Retries > Script->MaxRetries)
 		{
-			UE_LOG(LogNewFPS, Log, TEXT("Wave at %.0f s dropped: no usable spawn point."), Waves[Pending.WaveIndex].TimeSeconds);
+			NoteWaveSkipped(Waves[Pending.WaveIndex], /*bCapFull*/ false);
 			PendingWaves.RemoveAt(Index);
 		}
 		else
@@ -257,6 +259,26 @@ void ANFEnemySpawner::PollWaves()
 			Pending.NextTryTime = Now + Script->RetryDelay;
 		}
 	}
+}
+
+void ANFEnemySpawner::NoteWaveSkipped(const FNFWaveEntry& Wave, bool bCapFull)
+{
+	if (bCapFull)
+	{
+		++SkippedCapFullCount;
+	}
+	else
+	{
+		++SkippedNoPointCount;
+	}
+
+	// Grep for "Telemetry WaveSkipped". A no_spawn_point skip of a Drift wave during the flood voids the cycle's
+	// fun score (spec 1.5); alive_cap_full is the cap doing its job (spec 5.3).
+	UE_LOG(LogNewFPS, Log, TEXT("Telemetry WaveSkipped: reason=%s faction=%s group=%s due=%.0f s tide=%.1f s solo_count=%d | no_spawn_point=%d alive_cap_full=%d"),
+		bCapFull ? TEXT("alive_cap_full") : TEXT("no_spawn_point"),
+		Wave.Faction == ENFEnemyFaction::Drift ? TEXT("Drift") : TEXT("Wardens"),
+		*Wave.PointGroup.ToString(), Wave.TimeSeconds, GetScriptTime(), Wave.SoloCount,
+		SkippedNoPointCount, SkippedCapFullCount);
 }
 
 void ANFEnemySpawner::GatherUsablePoints(const FNFWaveEntry& Wave, TArray<ANFEnemySpawnPoint*>& OutPoints) const
@@ -277,6 +299,9 @@ void ANFEnemySpawner::GatherUsablePoints(const FNFWaveEntry& Wave, TArray<ANFEne
 			PlayerEyes.Add(Pawn->GetPawnViewLocation());
 		}
 	}
+
+	// Spec 7.5 (revision 3): the sight rule is for Warden points; Drift points are in the open and exempt.
+	const bool bCheckSight = Wave.Faction == ENFEnemyFaction::Drift ? Script->bDriftRequireOutOfSight : Script->bRequireOutOfSight;
 
 	FCollisionQueryParams SightParams(SCENE_QUERY_STAT(NFSpawnSight), /*bTraceComplex*/ false);
 	const FCollisionObjectQueryParams StaticWorld(ECC_WorldStatic);
@@ -306,7 +331,7 @@ void ANFEnemySpawner::GatherUsablePoints(const FNFWaveEntry& Wave, TArray<ANFEne
 				break;
 			}
 			// Nothing solid in between = the player can see the point.
-			if (Script->bRequireOutOfSight && !World->LineTraceTestByObjectType(Eye, SightTarget, StaticWorld, SightParams))
+			if (bCheckSight && !World->LineTraceTestByObjectType(Eye, SightTarget, StaticWorld, SightParams))
 			{
 				bAllowed = false;
 				break;
@@ -338,6 +363,7 @@ ANFEnemySpawner::EWaveResult ANFEnemySpawner::TrySpawnWave(const FNFWaveEntry& W
 	if (Room <= 0)
 	{
 		// A wave that meets a full cap is skipped, not queued.
+		NoteWaveSkipped(Wave, /*bCapFull*/ true);
 		return EWaveResult::Done;
 	}
 	int32 Remaining = FMath::Min(Wanted, Room);

@@ -277,6 +277,8 @@ void ANFEnemyBase::ApplyKnockback(const FVector& FromLocation, float DistanceCm)
 		Direction = -GetActorForwardVector().GetSafeNormal2D();
 	}
 
+	LastKnockbackTime = GetWorldTime();
+
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	const float Gravity = FMath::Max(FMath::Abs(Movement->GetGravityZ()), 1.f);
 	const float AirTime = 2.f * KnockbackUpSpeed / Gravity;

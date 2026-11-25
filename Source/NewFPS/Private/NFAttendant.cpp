@@ -23,10 +23,17 @@ namespace NFAttendantConst
 	const FName FireTokenPool(TEXT("AttendantFire"));
 	const float MoveOrderInterval = 0.5f;
 	const float WaterCheckInterval = 1.f;
-	/** NavMesh samples taken when looking for higher ground or a new firing spot. */
+	/** NavMesh samples taken when looking for a new firing spot. */
 	const int32 NavSamples = 8;
-	/** Higher ground has to be at least this much higher to be worth the walk (cm). */
-	const float MinRetreatGain = 100.f;
+	/**
+	 * NavMesh samples taken when looking for higher ground. More than for a firing spot: on a 1:30 beach only about
+	 * a fifth of the search disc is 50 cm higher, and the pick wants several candidates to choose between.
+	 */
+	const int32 RetreatNavSamples = 16;
+	/** A search for higher ground that found nothing is not repeated before this (it samples the NavMesh). */
+	const float RetreatSearchInterval = 1.f;
+	/** Telemetry (spec 1.5): a short circuit within this long after a player's knockback counts as "pushed". */
+	const float PushedWindowSeconds = 4.f;
 	/** Gives up a retreat walk after this long. */
 	const float MaxRetreatSeconds = 12.f;
 	/** Half period of the 1 Hz service blink. */
@@ -142,7 +149,12 @@ bool ANFAttendant::UpdateWater(float DeltaSeconds)
 		WaistSeconds += DeltaSeconds;
 		if (WaistSeconds >= Numbers->ShortCircuitSeconds)
 		{
-			UE_LOG(LogNewFPS, Verbose, TEXT("%s shorted out"), *GetName());
+			// Spec 1.5: was it put there by a player, or did it get there by itself (= the water rules failed)?
+			const float SincePush = Now - LastKnockbackTime;
+			if (UNFEnemyDirector* Director = GetDirector())
+			{
+				Director->NoteShortCircuit(this, SincePush <= NFAttendantConst::PushedWindowSeconds, SincePush);
+			}
 			HealthComponent->Kill(nullptr);
 			return false;
 		}
@@ -189,15 +201,42 @@ void ANFAttendant::OnRep_Sparking()
 	}
 }
 
+float ANFAttendant::GetOwnFloorZ() const
+{
+	return static_cast<float>(GetActorLocation().Z) - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+}
+
+bool ANFAttendant::IsFloorTooDeep(const FVector& FloorPoint) const
+{
+	// d(P) = water Z - floor Z of P (spec 5.2.1). A NavMesh point's Z is the floor.
+	const ANFTideManager* TideManager = ANFTideManager::Get(GetWorld());
+	return TideManager && TideManager->GetWaterZAt(FloorPoint) - static_cast<float>(FloorPoint.Z) >= GetData()->AvoidDepth;
+}
+
 bool ANFAttendant::TryStartRetreat()
 {
 	const UNFAttendantData* Numbers = GetData();
-
-	// Rising water within 150 cm of its feet: go up. The depth is negative while the water is below the feet.
-	if (!bWaterRising || GetOwnWaterDepth() < -Numbers->RetreatWaterMargin)
+	const float Now = GetWorldTime();
+	if (Now < NextRetreatSearchTime)
 	{
 		return false;
 	}
+
+	// The depth is negative while the water is below the feet (and very negative in a level without a tide).
+	const float Depth = GetOwnWaterDepth();
+	const float OwnFloorZ = GetOwnFloorZ();
+
+	// K2: standing in it (pushed, staggered, or the path led through water): out, whether the tide rises or not.
+	const bool bEscape = Depth >= Numbers->AvoidDepth;
+	// Rising water within 150 cm of its feet: go up. K4: not on the top level, where there is nowhere better.
+	const bool bTideClose = bWaterRising && Depth >= -Numbers->RetreatWaterMargin && OwnFloorZ < Numbers->NoRetreatFloorZ;
+	if (!bEscape && !bTideClose)
+	{
+		return false;
+	}
+
+	// From here on the NavMesh is sampled: a search that finds nothing is not repeated every frame.
+	NextRetreatSearchTime = Now + NFAttendantConst::RetreatSearchInterval;
 
 	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
 	if (!Navigation)
@@ -205,23 +244,44 @@ bool ANFAttendant::TryStartRetreat()
 		return false;
 	}
 
-	// No authored retreat points in the prototype: sample the NavMesh and take the highest reachable spot.
+	// K3. No authored retreat points in the prototype: sample the NavMesh. Valid = floor at least MinRetreatGain
+	// above its own floor (floor to floor) and not under AvoidDepth of water (K1).
 	const FVector Origin = GetActorLocation();
-	FVector BestPoint = Origin;
-	float BestZ = static_cast<float>(Origin.Z) + NFAttendantConst::MinRetreatGain;
-	bool bFound = false;
-	for (int32 Sample = 0; Sample < NFAttendantConst::NavSamples; ++Sample)
+	const double MinFloorZ = static_cast<double>(OwnFloorZ) + static_cast<double>(Numbers->MinRetreatGain);
+	TArray<FVector, TInlineAllocator<16>> ValidPoints;
+	double HighestZ = MinFloorZ;
+	for (int32 Sample = 0; Sample < NFAttendantConst::RetreatNavSamples; ++Sample)
 	{
 		FNavLocation Candidate;
-		if (Navigation->GetRandomReachablePointInRadius(Origin, Numbers->RetreatSearchRadius, Candidate) && Candidate.Location.Z > BestZ)
+		if (!Navigation->GetRandomReachablePointInRadius(Origin, Numbers->RetreatSearchRadius, Candidate))
 		{
-			BestZ = static_cast<float>(Candidate.Location.Z);
-			BestPoint = Candidate.Location;
-			bFound = true;
+			continue;
 		}
+		if (Candidate.Location.Z < MinFloorZ || IsFloorTooDeep(Candidate.Location))
+		{
+			continue;
+		}
+		ValidPoints.Add(Candidate.Location);
+		HighestZ = FMath::Max(HighestZ, Candidate.Location.Z);
 	}
 
-	if (!bFound)
+	// A random one of those close to the highest, so a group does not walk to one spot in single file.
+	// No valid spot: it does not walk, it fights where it stands.
+	const double PickFloorZ = HighestZ - static_cast<double>(FMath::Max(Numbers->RetreatPickBand, 0.f));
+	FVector BestPoint = Origin;
+	int32 NumEligible = 0;
+	for (const FVector& ValidPoint : ValidPoints)
+	{
+		if (ValidPoint.Z >= PickFloorZ)
+		{
+			++NumEligible;
+			if (FMath::RandRange(1, NumEligible) == 1)
+			{
+				BestPoint = ValidPoint;
+			}
+		}
+	}
+	if (NumEligible == 0)
 	{
 		return false;
 	}
@@ -470,7 +530,13 @@ void ANFAttendant::ThinkEngage(APawn* Target, float Distance)
 	{
 		NextMoveOrderTime = Now + NFAttendantConst::MoveOrderInterval;
 
-		if (!bLineOfSight || Distance > Numbers->PreferredMaxRange)
+		if (GetOwnWaterDepth() >= Numbers->AvoidDepth)
+		{
+			// K1/K2: it stands in the water and found no higher ground (TryStartRetreat above). It fights where it
+			// stands; it does not follow the player further in.
+			StopMoving();
+		}
+		else if (!bLineOfSight || Distance > Numbers->PreferredMaxRange)
 		{
 			// Close in to the middle of the band (MoveTo stops at the acceptance radius).
 			MoveToTargetActor(Target, (Numbers->PreferredMinRange + Numbers->PreferredMaxRange) * 0.5f);
@@ -498,6 +564,11 @@ void ANFAttendant::TryReposition(APawn* Target)
 	{
 		FNavLocation Candidate;
 		if (!Navigation->GetRandomReachablePointInRadius(GetActorLocation(), Numbers->RepositionRadius, Candidate))
+		{
+			continue;
+		}
+		// K1: never a spot it would stand in the water at. No dry spot in the samples: it stays where it is.
+		if (IsFloorTooDeep(Candidate.Location))
 		{
 			continue;
 		}

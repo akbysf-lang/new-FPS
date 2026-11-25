@@ -140,17 +140,28 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "0.0", Units = "cm"))
 	float MinPlayerDistance = 1500.f;
 
-	/** ...and out of every standing player's sight. */
+	/** ...and, for Warden points, out of every standing player's sight (shutters and hotel doors). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules")
 	bool bRequireOutOfSight = true;
+
+	/**
+	 * The same sight rule for Drift points. Off (spec 7.5, revision 3): the sea edge points lie on the open beach
+	 * and are nearly always in view, so with the rule on the water line waves silently fail to spawn. Scuttlers
+	 * coming out of the water in plain sight is the fantasy; the 1.5 s foam telegraph covers the pop-in.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules")
+	bool bDriftRequireOutOfSight = false;
 
 	/** No usable point: the wave waits this long and tries again... */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "0.5", Units = "s"))
 	float RetryDelay = 5.f;
 
-	/** ...this many times, then it is dropped. The spec gives no limit; developer placeholder. */
+	/**
+	 * ...this many times, then it is skipped and logged. Spec 7.5: 3 (3 x 5 s = 15 s; more than the 20 s between
+	 * flood waves would stack a late wave on the next one).
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "0"))
-	int32 MaxRetries = 6;
+	int32 MaxRetries = 3;
 
 	/** Warning before the enemies appear (foam / shutter noise). OnSpawnTelegraph fires at its start. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "0.0", Units = "s"))
@@ -169,7 +180,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FNFOnSpawnTelegraph, FVector, Locat
  *
  * Per wave: count = round(SoloCount x M(players)), at least 1, cut down to what the alive cap leaves; a wave that
  * meets a full cap is skipped (not queued). Points must match the faction (and group), satisfy their water rule,
- * and be far from and unseen by the players; if none qualifies the wave is retried.
+ * and be far from the players - Warden points also out of their sight; if none qualifies the wave is retried a
+ * few times and then skipped. Every skipped wave writes a "Telemetry WaveSkipped" line to LogNewFPS.
  */
 UCLASS()
 class NEWFPS_API ANFEnemySpawner : public AActor
@@ -195,6 +207,10 @@ public:
 	 * right now, ignoring spawn points, scaling and the telegraph (Flood Drill). Returns how many were spawned.
 	 */
 	int32 AuthSpawnGroupAround(ENFEnemyFaction Faction, int32 Count, const FVector& Center, float MinDistance, float MaxDistance);
+
+	/** Server: waves skipped since the script was last (re)started because no spawn point was usable (spec 1.5). */
+	UFUNCTION(BlueprintPure, Category = "Spawner")
+	int32 GetSkippedWaveCount() const { return SkippedNoPointCount; }
 
 	/** Every machine: enemies are about to appear at Location (SpawnTelegraphSeconds later). Hook the telegraph sound/VFX here. */
 	UPROPERTY(BlueprintAssignable, Category = "Spawner")
@@ -235,11 +251,15 @@ private:
 	float GetScriptTime() const;
 	EWaveResult TrySpawnWave(const FNFWaveEntry& Wave);
 	void GatherUsablePoints(const FNFWaveEntry& Wave, TArray<ANFEnemySpawnPoint*>& OutPoints) const;
+	/** Telemetry (spec 1.5): count and log a wave that did not spawn. bCapFull = by design (5.3), else no usable point. */
+	void NoteWaveSkipped(const FNFWaveEntry& Wave, bool bCapFull);
 	void SpawnAtPoint(TWeakObjectPtr<ANFEnemySpawnPoint> Point, ENFEnemyFaction Faction, int32 Count);
 	ANFEnemyBase* SpawnEnemy(TSubclassOf<ANFEnemyBase> EnemyClass, const FVector& FloorLocation, const FRotator& Rotation);
 
 	bool bSpawningEnabled = false;
 	int32 NextWaveIndex = 0;
 	TArray<FPendingWave> PendingWaves;
+	int32 SkippedNoPointCount = 0;
+	int32 SkippedCapFullCount = 0;
 	FTimerHandle PollTimerHandle;
 };

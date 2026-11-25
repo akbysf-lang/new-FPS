@@ -3,6 +3,7 @@
 #include "NFCharacter.h"
 #include "NFRulesData.h"
 #include "NFStrongbox.h"
+#include "NFSupplyPoint.h"
 #include "NFTideData.h"
 #include "NFWetnessComponent.h"
 #include "NFWinchPoint.h"
@@ -208,6 +209,7 @@ void UNFInteractionComponent::AuthBeginInteraction()
 	}
 
 	// A strongbox cannot be lifted from chest depth (spec 3.3); one already in hand stays there.
+	// Supply points follow the same rule (both hands; the spec gives none for them).
 	if (const UNFWetnessComponent* Wetness = Owner->GetWetnessComponent())
 	{
 		if (Wetness->GetWaterDepth() >= Wetness->GetTideData()->ChestDepth)
@@ -233,10 +235,49 @@ void UNFInteractionComponent::AuthBeginInteraction()
 		}
 	}
 
+	// A first aid box or ammo crate that would do something for this player. Whichever is nearer wins, so a
+	// strongbox dropped next to a box does not hide it (and the other way round).
+	ANFSupplyPoint* BestSupply = FindSupplyPointInRange(/*bUsableOnly*/ true);
+	if (BestSupply && (!BestBox || FVector::DistSquared(OwnerLocation, BestSupply->GetActorLocation()) < BestBoxDistance))
+	{
+		AuthSetInteraction(ENFInteraction::Supply, BestSupply, BestSupply->GetHoldSecondsFor(Owner));
+		return;
+	}
+
 	if (BestBox)
 	{
 		AuthSetInteraction(ENFInteraction::PickUp, BestBox, Rules->PickupHoldSeconds);
 	}
+}
+
+ANFSupplyPoint* UNFInteractionComponent::FindSupplyPointInRange(bool bUsableOnly) const
+{
+	const ANFCharacter* Character = GetNFOwner();
+	UWorld* World = GetWorld();
+	if (!Character || !World)
+	{
+		return nullptr;
+	}
+
+	const float Range = Character->GetRules()->InteractRange;
+	const FVector CharacterLocation = Character->GetActorLocation();
+	ANFSupplyPoint* Best = nullptr;
+	double BestDistance = TNumericLimits<double>::Max();
+	for (TActorIterator<ANFSupplyPoint> It(World); It; ++It)
+	{
+		ANFSupplyPoint* Supply = *It;
+		if (!IsWithinRange(Supply, Range) || (bUsableOnly && !Supply->CanBeUsedBy(Character)))
+		{
+			continue;
+		}
+		const double Distance = FVector::DistSquared(CharacterLocation, Supply->GetActorLocation());
+		if (Distance < BestDistance)
+		{
+			BestDistance = Distance;
+			Best = Supply;
+		}
+	}
+	return Best;
 }
 
 void UNFInteractionComponent::AuthSetInteraction(ENFInteraction NewInteraction, AActor* NewTarget, float Duration)
@@ -281,6 +322,12 @@ bool UNFInteractionComponent::AuthIsInteractionStillValid() const
 	{
 		const ANFCharacter* Teammate = Cast<ANFCharacter>(InteractionTarget.Get());
 		return Teammate && Teammate->GetLifeState() == ENFLifeState::Downed;
+	}
+	case ENFInteraction::Supply:
+	{
+		// Also ends the hold of a second player when the first one takes the last use.
+		const ANFSupplyPoint* Supply = Cast<ANFSupplyPoint>(InteractionTarget.Get());
+		return Supply && Supply->CanBeUsedBy(Owner);
 	}
 	default:
 		return false;
@@ -336,6 +383,13 @@ void UNFInteractionComponent::AuthCompleteInteraction()
 		{
 			const UNFRulesData* Rules = Owner->GetRules();
 			Teammate->AuthReviveFromDowned(Rules->ReviveHealth, Rules->ReviveInvulnerableSeconds);
+		}
+	}
+	else if (Finished == ENFInteraction::Supply)
+	{
+		if (ANFSupplyPoint* Supply = Cast<ANFSupplyPoint>(Target))
+		{
+			Supply->AuthUse(Owner);
 		}
 	}
 }

@@ -1,5 +1,7 @@
 #include "NFEnemyDirector.h"
+#include "NewFPS.h"
 #include "NFEnemyBase.h"
+#include "NFTideManager.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 
@@ -99,5 +101,33 @@ void UNFEnemyDirector::KnockbackEnemiesAround(const FVector& Origin, float Radiu
 		{
 			Enemy->ApplyKnockback(Origin, Distance);
 		}
+	}
+}
+
+void UNFEnemyDirector::NoteShortCircuit(const AActor* Enemy, bool bPushed, float SecondsSincePush)
+{
+	if (bPushed)
+	{
+		++PushedShortCircuits;
+	}
+	else
+	{
+		++SpontaneousShortCircuits;
+	}
+
+	const ANFTideManager* TideManager = ANFTideManager::Get(GetWorld());
+	const double TideSeconds = TideManager ? TideManager->GetElapsedSeconds() : 0.0;
+	const int32 Total = PushedShortCircuits + SpontaneousShortCircuits;
+
+	// Grep for "Telemetry ShortCircuit". The last line of a session carries the totals.
+	if (bPushed)
+	{
+		UE_LOG(LogNewFPS, Log, TEXT("Telemetry ShortCircuit: cause=pushed (%.1f s after the push) enemy=%s tide=%.1f s | pushed=%d spontaneous=%d (%d%% spontaneous)"),
+			SecondsSincePush, *GetNameSafe(Enemy), TideSeconds, PushedShortCircuits, SpontaneousShortCircuits, SpontaneousShortCircuits * 100 / Total);
+	}
+	else
+	{
+		UE_LOG(LogNewFPS, Log, TEXT("Telemetry ShortCircuit: cause=spontaneous enemy=%s tide=%.1f s | pushed=%d spontaneous=%d (%d%% spontaneous)"),
+			*GetNameSafe(Enemy), TideSeconds, PushedShortCircuits, SpontaneousShortCircuits, SpontaneousShortCircuits * 100 / Total);
 	}
 }

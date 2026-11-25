@@ -6,6 +6,7 @@
 
 class ANFCharacter;
 class ANFStrongbox;
+class ANFSupplyPoint;
 
 /** What a held Interact button is doing right now. */
 UENUM(BlueprintType)
@@ -15,14 +16,17 @@ enum class ENFInteraction : uint8
 	/** Lifting a strongbox. */
 	PickUp,
 	/** Getting a downed teammate back up. */
-	Revive
+	Revive,
+	/** Using a first aid box or an ammo crate (ANFSupplyPoint). */
+	Supply
 };
 
 /**
  * Hold-to-interact and strongbox carrying for a player character (prototype-spec.md 2.3, 6.2, 6.4).
  *
  * Server authoritative: the client only reports "Interact is held / released". The server picks the target
- * (a downed teammate first, then a free strongbox), runs the hold timer, and completes or cancels it.
+ * (a downed teammate first, then the nearer of a free strongbox and a usable supply point), runs the hold timer,
+ * and completes or cancels it.
  * The carried strongbox is replicated to everyone; the running interaction only to the owner (for the HUD).
  */
 UCLASS(ClassGroup = (NewFPS), meta = (BlueprintSpawnableComponent))
@@ -62,6 +66,12 @@ public:
 	/** 0..1 through the current hold (local estimate on the owning client). 0 when nothing is running. */
 	UFUNCTION(BlueprintPure, Category = "Interaction")
 	float GetInteractionProgress() const;
+
+	/**
+	 * Nearest supply point within the interact range of the owner, or null. Any machine: the server picks its
+	 * target with it (bUsableOnly), the HUD of the owning client draws its prompt from it.
+	 */
+	ANFSupplyPoint* FindSupplyPointInRange(bool bUsableOnly) const;
 
 	// ---- Server only ----
 

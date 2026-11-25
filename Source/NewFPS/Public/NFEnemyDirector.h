@@ -43,6 +43,13 @@ public:
 	/** Push every living enemy within Radius of Origin away from it by about Distance cm (solo spare line). */
 	void KnockbackEnemiesAround(const FVector& Origin, float Radius, float Distance);
 
+	/**
+	 * Server telemetry (prototype-spec.md 1.5): an Attendant shorted out. bPushed = a player knocked it back
+	 * shortly before; otherwise it walked or stood into the water by itself. Writes one LogNewFPS line with the
+	 * running totals of this level (validity check: "spontaneous" above 30 % means the water behaviour is broken).
+	 */
+	void NoteShortCircuit(const AActor* Enemy, bool bPushed, float SecondsSincePush);
+
 private:
 	struct FToken
 	{
@@ -56,4 +63,7 @@ private:
 
 	TArray<FToken> Tokens;
 	TArray<TWeakObjectPtr<ANFEnemyBase>> Enemies;
+
+	int32 PushedShortCircuits = 0;
+	int32 SpontaneousShortCircuits = 0;
 };

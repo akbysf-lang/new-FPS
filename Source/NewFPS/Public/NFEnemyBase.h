@@ -159,6 +159,12 @@ protected:
 
 	TWeakObjectPtr<APawn> CurrentTarget;
 
+	/**
+	 * Server: world time of the last ApplyKnockback. Every knockback in the prototype is player-made (stagger,
+	 * Kedge, heavy hit, solo spare line), so telemetry reads it as "pushed by a player".
+	 */
+	float LastKnockbackTime = -1000.f;
+
 private:
 	void HandleDamageTakenNative(const FNFDamageInfo& DamageInfo, float AppliedDamage);
 

@@ -297,11 +297,38 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (ClampMin = "0.0", Units = "s"))
 	float ShortCircuitSeconds = 2.f;
 
+	/**
+	 * Spec 5.2.1 K1/K2. Never picks a move goal whose floor is this deep under water, and walks out at once when
+	 * its own feet are this deep (pushed in, staggered in, or a path that led through water).
+	 * 40 sits between the terrace water at High Water (30) and KneeDepth (50). Raise it together with the tide
+	 * data's High Water Z, or the terrace Attendants will flee to the dry islands.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (Units = "cm"))
+	float AvoidDepth = 40.f;
+
 	/** Heads for higher ground when rising water is within this far below its feet. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (Units = "cm"))
 	float RetreatWaterMargin = 150.f;
 
-	/** How far it looks for higher ground. Not in the spec; developer placeholder. */
+	/** How far it looks for higher ground (spec 5.2.1 K3). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (ClampMin = "0.0", Units = "cm"))
 	float RetreatSearchRadius = 3000.f;
+
+	/** K3: higher ground must be at least this much higher, floor to floor (not capsule centre to floor). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (ClampMin = "0.0", Units = "cm"))
+	float MinRetreatGain = 50.f;
+
+	/**
+	 * K3: it walks to a random one of the valid spots whose floor is within this far below the highest valid
+	 * spot, so a group spreads out instead of queueing for one point. 0 = always the single highest spot.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (ClampMin = "0.0", Units = "cm"))
+	float RetreatPickBand = 100.f;
+
+	/**
+	 * K4: standing on a floor at or above this world Z (the terrace) it ignores the "rising water is close below
+	 * me" trigger and stays. The AvoidDepth escape still works there. World Z: move it with the level.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Water", meta = (Units = "cm"))
+	float NoRetreatFloorZ = 750.f;
 };

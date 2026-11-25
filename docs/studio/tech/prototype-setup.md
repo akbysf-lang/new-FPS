@@ -1,13 +1,13 @@
 # Prototip kurulumu: EBBSHIFT prototipi (3C, gelgit, iki silah + Kedge, ganimet, iki düşman)
 
 > **Uyarı: bu kod henüz hiç derlenmedi ve editörde hiç çalıştırılmadı.**
-> İlk tur (iskelet), gelgit entegrasyonu ve ikinci tur (bu belge) Unreal Engine kurulu olmayan bir bulut ortamında yazıldı; Unreal MCP de bağlı değildi.
+> İlk tur (iskelet), gelgit entegrasyonu, ikinci tur ve üçüncü tur (spec Revizyon 3 §13.3: Attendant su davranışı, Drift doğuş istisnası, ikmal noktası) Unreal Engine kurulu olmayan bir bulut ortamında yazıldı; Unreal MCP de bağlı değildi.
 > İlk derlemede hata çıkması olasıdır. Hata çıktısını (Output/Build log) olduğu gibi `gameplay-developer`'a iletin.
 > En riskli noktalar bu belgenin sonundaki "Derleme riskleri" bölümündedir. Aşağıdaki "görmeniz beklenen" cümlelerinin tamamı tasarım niyetidir, gözlem değildir.
 
 Hedef motor: **UE 5.8**. Hiçbir `.uasset` içermez. Kod, hiçbir varlık oluşturmadan da oynanabilecek biçimde yazıldı: yerleşik tuş atamaları, spec değerlerini sınıf varsayılanı olarak taşıyan veri sınıfları (Purser, Gaffer, Kedge, 3C, gelgit çizelgesi, kurallar, düşmanlar, dalga betiği) ve motorun temel şekillerinden gri kutu görseller.
 
-Sayıların kaynağı: [prototype-spec.md](../design/prototype-spec.md) (Revizyon 2). Mimari kararlar: [adr-001-tide-and-network.md](adr-001-tide-and-network.md).
+Sayıların kaynağı: [prototype-spec.md](../design/prototype-spec.md) (Revizyon 3). Mimari kararlar: [adr-001-tide-and-network.md](adr-001-tide-and-network.md).
 
 ## 1. İlk açılış
 
@@ -32,6 +32,7 @@ Sayıların kaynağı: [prototype-spec.md](../design/prototype-spec.md) (Revizyo
 | `NF Tide Manager` | tam 1 | Konumu önemsiz (su düzlemi X/Y'de aktörün olduğu yerde, 1000 m kare). `Tide Data` boşsa spec'in 12 dakikalık çizelgesi kullanılır. Düz bir test haritasında suyun zemine göre yüksekliğini `Water Z Offset` ile kaydırın. |
 | `NF Strongbox` | 6 (spec) | Ganimet noktalarına, zemine. Kilitli dolap yok: sandıklar açıkta durur. |
 | `NF Winch Point` | 1 | Vinç platformu zeminine (aktör orijini zeminde). 400 × 400 ağ; içine bırakılan sandık sayılır. |
+| `NF Supply Point` (**yeni**) | 2 ilk yardım + 2 mermi (spec §6.1, §4.2) | Zemine (aktör orijini zeminde; 60 × 40 × 30 gri kutu). Örnekte **Supply → Supply Type**: `First Aid` (açık renk kutu) ya da `Ammo` (koyu yeşil kutu). İlk yardım: biri Half'ta, biri High'da; hepsi **açıkta** (spec §7.6: alım riskli olsun). Oyuncunun 220 cm yaklaşabileceği yere koyun; kutu hareketi, mermiyi ve NavMesh'i engellemez. Sayılar örnekte değil `NFRulesData → Supply` içinde. |
 | `NF Enemy Spawner` | tam 1 | Konumu önemsiz. `Wave Data` boşsa spec §8.2 betiği kullanılır. |
 | `NF Enemy Spawn Point` | spec §7.5: 13 Drift + 7 Warden | Zemine. Her birinde `Faction`, `Water Rule`, gerekiyorsa `Submerged Margin` ve `Group` (aşağıdaki tablo). |
 | `Nav Mesh Bounds Volume` | 1 | Tüm yürünebilir alanı kaplasın (**P** ile yeşil alanı görün). NavMesh yoksa düşmanlar doğar ama yürümez. |
@@ -67,7 +68,7 @@ Düz zeminli bir "gym" haritasında (spec §7.7 adım 1) gelgiti elle gezdirmek 
 | **Silah değiştir** (Purser ↔ Gaffer; sandık taşırken: bırak) | Q | Y / Üçgen |
 | **Purser / Gaffer doğrudan** | 1 / 2 | — |
 | **Kedge (yakın dövüş)** | V | Sağ çubuk tıklama |
-| **Etkileşim** (basılı tut: sandık al 0,5 sn / arkadaşı kaldır 3 sn; taşırken bas: bırak) | E | D-pad aşağı |
+| **Etkileşim** (basılı tut: sandık al 0,5 sn / arkadaşı kaldır 3 sn / ilk yardım 1,5 sn / mermi 0,5 sn; taşırken bas: bırak) | E | D-pad aşağı |
 
 Gamepad atamaları yer tutucudur (aim assist ve düzen dikey dilim işi).
 
@@ -81,6 +82,16 @@ Gamepad atamaları yer tutucudur (aim assist ve düzen dikey dilim işi).
 | `nf.Tide.Debug 0\|1` | Su yüksekliği, saat ve yerel derinlik satırı. |
 | `nf.Weapon.DebugShots 0\|1` | Atış izleri (saçma başına bir çizgi). |
 | `Log LogNewFPS Verbose` | Hasar hattı, reddedilen atışlar, atış başına saçma toplamı. |
+
+**Telemetri satırları (spec §1.5; CSV değil, sunucunun Output Log'u / `Saved/Logs/NewFPS.log`, `Log` düzeyi, ek ayar gerekmez):**
+
+| Aranacak metin | Ne zaman | İçerik |
+|---|---|---|
+| `Telemetry ShortCircuit` | Bir Attendant kısa devre yaptığında | `cause=pushed` (son 4 sn içinde oyuncu kaynaklı itme/sendeleme aldı) ya da `cause=spontaneous`; gelgit saati; o ana kadarki `pushed=` / `spontaneous=` toplamları ve kendiliğinden yüzdesi. **Son satırdaki yüzde %30'u aşıyorsa o oturumun Ölçüt 4 verisi sayılmaz.** |
+| `Telemetry WaveSkipped` | Bir dalga doğamadığında | `reason=no_spawn_point` (3 denemede uygun nokta yok) ya da `reason=alive_cap_full` (tavan dolu; spec §5.3, tasarım gereği); fraksiyon, grup, betik zamanı (`due`), gelgit saati, iki sayaç. **Flood'da (5:00–10:00) `no_spawn_point` + `faction=Drift` satırı varsa o döngünün eğlence puanı sayılmaz.** |
+| `Supply:` | İlk yardım / mermi kullanıldığında | Kim, hangi kutu, kalan kullanım. |
+
+Sayaçlar harita yeniden yüklenince (`nf.Mission.Restart`) sıfırlanır. `nf.FloodDrill` yalnız dalga sayaçlarını sıfırlar; kısa devre toplamları harita yüklenene kadar birikir.
 
 Flood Drill'i her oturumda açmak için: PIE'de **Play → Advanced Settings → Server Game Options** alanına `?FloodDrill`, ya da `BP_NFGameMode` → `Start In Flood Drill`.
 
@@ -103,6 +114,21 @@ Flood Drill'i her oturumda açmak için: PIE'de **Play → Advanced Settings →
 **Ganimet (spec §2.3, §6.4):** sandığa 220 cm içinde E'yi 0,5 sn tut → sol altta vekil kutu; hız 400, koşu yok, alçak zıplama; yalnız Purser, ADS ve reload yok, Kedge yok. E ya da Q → sandık ayak dibine iner. Vinç ağına bırakınca HUD "STRONGBOXES n / kota" artar. Kota = oyuncu + 1.
 
 **Düşmanlar (spec §5):** Scuttler suda hızlı (504) ve iyileşir, kuruda 360, 20 sn kuru kalınca Parched (300, tek atışlık); Pinch öncesi kıskaçlar kalkar (0,5 sn), Lunge öncesi gövde çöker (0,6 sn); bir oyuncuya aynı anda en çok 2'si saldırır, kalanı çevrede döner. Attendant: lamba kırmızı (0,7 sn) → 3 mermi; fark ettikten sonraki ilk yaylım yana gider; 4 yaylımdan sonra 3 sn lamba 1 Hz göz kırpar; 150 cm içinde iter; tek atışta ≥ 80 hasarda sendeleyip geri gider; belde 2 sn kalınca devre dışı kalır.
+
+**Attendant ve su (spec §5.2.1, K1–K4; `nf.Tide.SetElapsed` ile deneyin):**
+
+| Durum | Beklenen |
+|---|---|
+| Slack'te kumsalda / Half'ta, su uzakta | 6–10 sn'de bir yer değiştirir; seçtiği nokta hiçbir zaman 40 cm ve daha derin suda değildir (K1). |
+| Flood, kumsalda (su ayağının 150 cm altına geldi) | Sırtını dönüp yokuş yukarı yürür; her seferinde zemini en az 50 cm daha yüksek bir noktaya. Varınca yeniden ateş eder, su yine yaklaşınca yeniden çekilir (K3). |
+| Aynı yerde 3–4 Attendant birlikte çekiliyor | Tek noktaya tek sıra yürümezler; en yüksek adaya 100 cm'den yakın noktalara dağılırlar. |
+| Kedge ya da sendeletmeyle 40+ cm suya itildi | Sendeleme biter bitmez (su yükselmese de) sudan çıkmaya yürür (K2). Belde 2 sn kalırsa kısa devre: log `cause=pushed`. |
+| Suda, 3000 cm içinde 50 cm yüksek kuru zemin yok | Yürümez, olduğu yerde savaşır; oyuncuyu suyun içine doğru kovalamaz. |
+| Terasta (zemin Z ≥ 750), High Water (30 cm su) | Terasta kalır, kuru adalara ya da vinç platformuna yığılmaz (K4); 30 < 40 olduğu için K2 de tetiklenmez. |
+
+**Doğuş (spec §7.5):** kumsaldan denize bakarken 5:00 dalgası (su çizgisi, 6 Scuttler) gözünüzün önünde doğmalı; logda `Telemetry WaveSkipped ... no_spawn_point` satırı **olmamalı**. Warden noktaları yine yalnız görüş dışındayken kullanılır.
+
+**İkmal (spec §6.1, §4.2):** ilk yardım kutusuna 220 cm içinde, can < 100 iken HUD "HOLD INTERACT - FIRST AID (n LEFT)"; E'yi 1,5 sn tut ("PATCHING UP" çubuğu) → HP 100, n bir azalır. n başlangıçta oyuncu sayısıdır ve takımın ortak hakkıdır (aynı oyuncu iki kez kullanabilir). Can tamken çubuk başlamaz, hak harcanmaz (gri "FIRST AID (n LEFT)"); bitince "FIRST AID - EMPTY". Mermi sandığı: "HOLD INTERACT - AMMO", 0,5 sn tut ("RESTOCKING") → Gaffer yedeği 30'a dolar (şarjör dolmaz, Purser etkilenmez); sınırsız. Bırakınca ilerleme sıfırlanır; hasar kesmez. Sandık taşırken, yerdeyken ve göğüs derinliğinde (d ≥ 135) kullanılamaz. Yanında serbest bir Strongbox varsa hangisi daha yakınsa o seçilir.
 
 **Can ve düşme (spec §6):** 5 sn hasarsızlıktan sonra 50'ye kadar 8 can/sn. Tek oyuncu: ilk düşüşte 3 sn sonra kendiliğinden kalkar (40 can), ikincide "SHIFT FAILED". Co-op: düşen sürünür, 60 sn (suda 3 kat hızlı) içinde arkadaşı E'yi 3 sn tutarsa 40 canla kalkar; yoksa 45 sn sonra Player Start'ta 50 canla döner. Herkes aynı anda yerdeyse görev biter. 12:00'de kota tamamsa "THAT'S A SHIFT".
 
@@ -175,6 +201,8 @@ Content Browser → sağ tık → **Miscellaneous → Data Asset**. Sınıfı se
    - Sandığı istemci alıyor, diğer oyuncu taşıyıcının yanında kutuyu görüyor, bırakınca kutu iki tarafta aynı yerde mi? Alırken/bırakırken tek bir küçük düzeltme beklenir.
    - Düşen oyuncuyu diğeri 3 sn'de kaldırabiliyor mu? Oyuncular birbirine hasar vermemeli (dost ateşi kapalı; diğer oyuncu gri bir silindir olarak görünür).
    - 2 oyuncuda dalgalar ×1,6, Attendant ateş token'ı 3, kota 3 mü?
+   - İlk yardım kutusu: 2 oyuncuda "2 LEFT" mı; istemci kullanınca canı ve sayaç iki ekranda da güncelleniyor mu; son hakka iki oyuncu aynı anda basarsa yalnız biri mi iyileşiyor (diğerinin çubuğu kesilmeli)? Geç katılan istemci doğru kalan sayıyı görüyor mu?
+   - Mermi sandığı: istemcide Gaffer yedeği 30'a çıkıyor, ~0,6 sn sonra geri sıçramıyor mu?
 
 ## 5. Designer: hangi değer nerede
 
@@ -189,7 +217,7 @@ Kod derlemeye gerek yok; veri varlığını açıp değiştirin, Play'e basın. 
 | 7 | Scuttler tavanı, dalga büyüklüğü, M eğimi | `NFWaveData` → **Scaling** (`Drift Alive Cap By Player Count`, `Player Scale Slope`) ve **Waves** (`Solo Count`) |
 | 8 | Attendant yaylım hasarı, ateş token'ı | `NFAttendantData` → **Punch Burst**: `Projectile Damage`, `Fire Tokens By Player Count` |
 | 9 | High Water yüksekliği | `NFTideData` → **Height**: `High Water Z` (Phases oranları buna göre ölçeklenir) |
-| 10 | Kota | `NFRulesData` → **Quota**. Dolap açma süresi: dolap yok (yapılmadı) |
+| 10 | Kota | `NFRulesData` → **Quota**. Dolap açma süresi: dolap yok (ertelendi, spec §13 S7d) |
 
 Diğerleri:
 
@@ -199,15 +227,34 @@ Diğerleri:
 | `NFMeleeData` | `Damage`, `Swing Interval`, `Hit Delay`, `Reach`, `Cone Angle` |
 | `NFMovementData` | **Body** (çömelmiş yarı yükseklik, göz yükseklikleri zeminden) · **Ground** · **Air** · **Carry** · **Downed** |
 | `NFTideData` | **Wetness** (`Knee/Waist/Chest/Overhead Depth`, histerezis 8 cm, gecikme 0,2 sn) · **Effects** (bel suyunda yayılım ×1,5 ve reload ×1,25, boğulma) · **Warnings** |
-| `NFRulesData` | **Health** (yenilenme) · **Downed** · **Solo** · **Interaction** · **Quota** · **Flood Drill** |
+| `NFRulesData` | **Health** (yenilenme) · **Downed** · **Solo** · **Interaction** · **Supply** (**yeni**, aşağıda) · **Quota** · **Flood Drill** |
 | `NFScuttlerData` | **Water** · **Pinch** · **Lunge** · **Crowd** (token) · **Reactions** |
 | `NFAttendantData` | **Movement** · **Punch Burst** · **Service** · **Shove** · **Reactions** · **Water** |
+
+**Üçüncü turda eklenen alanlar (spec Revizyon 3):**
+
+| Varlık → grup | Alan | Varsayılan | Ne yapar |
+|---|---|---|---|
+| `NFAttendantData` → **Water** | `Avoid Depth` | 40 | K1/K2: bu kadar derin zemine gitmez; kendi ayağı bu kadar suya girince hemen çıkar. `High Water Z` 840'ın üstüne çıkarılırsa birlikte yükseltin (spec §5.2.1 uyarısı). |
+| | `Min Retreat Gain` | 50 | K3: geri çekilme hedefi zeminden zemine en az bu kadar yüksek olmalı. |
+| | `Retreat Pick Band` | 100 | K3: en yüksek geçerli adaya bu kadar yakın olanlardan rastgele biri seçilir. 0 = hep tek en yüksek nokta. |
+| | `No Retreat Floor Z` | 750 | K4: zemini bu **dünya Z**'sinde ya da üstünde olan Attendant "su yaklaşıyor" diye çekilmez. Seviye yükseklikleri değişirse (ya da düz gym haritasında) birlikte değiştirin. |
+| | `Retreat Water Margin` / `Retreat Search Radius` | 150 / 3000 | Değişmedi. |
+| `NFWaveData` → **Rules** | `Require Out Of Sight` | açık | Artık yalnız **Warden** noktaları için. |
+| | `Drift Require Out Of Sight` | kapalı | Drift noktalarında görüş hattı aranmaz (spec §7.5). Eski davranışı denemek için açın. |
+| | `Max Retries` | **3** (eskiden 6) | 3 × 5 sn sonra dalga atlanır ve loglanır. |
+| `NFRulesData` → **Supply** | `First Aid Hold Seconds` | 1,5 | |
+| | `First Aid Health` | 100 | Kutunun canı çıkardığı değer (azami canla sınırlı). |
+| | `First Aid Uses Per Player` | 1 | Kutu başına kullanım = oyuncu sayısı × bu. |
+| | `Ammo Crate Hold Seconds` | 0,5 | **Yer tutucu** (spec'te yok). |
+
+Kod sabiti olarak kalanlar (ayar değil): geri çekilme için NavMesh örnek sayısı (16), başarısız aramanın tekrar aralığı (1 sn), telemetrideki "itilmiş" penceresi (4 sn, spec §1.5 tanımı).
 
 Değerler doğuşta okunur; değişiklikten sonra Play'i yeniden başlatın.
 
 **Veri varlığında olmayanlar (karakter/düşman Blueprint'inde):** oyuncu kapsülü 34/90 (`BP_NFCharacter` → CapsuleComponent; motor çömelme bitince kapsülü sınıf varsayılanından geri yüklediği için veriden okunamıyor), Scuttler kapsülü 35/35 ve isabet hacimleri, Attendant kapsülü 40/95 ve lamba küresi (r 18, Z 172), `DefaultFOV` (95), fare hassasiyeti.
 
-**Developer yer tutucuları (spec'te sayısı olmayanlar; "tahmin"):** Scuttler'ı "Gaffer iter" eşiği ve mesafesi (`Heavy Hit Damage` 45, `Heavy Hit Knockback` 120), isabet eden Lunge'ın toparlanması (0,4), Attendant ilk yaylım ıskalama açısı (6°), Shove bekleme süresi (1,5) ve isabet payı (40), yer değiştirme yarıçapı (800), geri çekilme arama yarıçapı (3000), spare line itme mesafesi (300), dalga yeniden deneme sayısı (6), Flood Drill düşman mesafesi (1200–2500). Hepsi ilgili veri varlığında, yorumunda "placeholder" yazıyor.
+**Developer yer tutucuları (spec'te sayısı olmayanlar; "tahmin"):** Scuttler'ı "Gaffer iter" eşiği ve mesafesi (`Heavy Hit Damage` 45, `Heavy Hit Knockback` 120), isabet eden Lunge'ın toparlanması (0,4), Attendant ilk yaylım ıskalama açısı (6°), Shove bekleme süresi (1,5) ve isabet payı (40), yer değiştirme yarıçapı (800), geri çekilme arama yarıçapı (3000), spare line itme mesafesi (300), Flood Drill düşman mesafesi (1200–2500): bunlar spec Revizyon 3 §13.1'de onaylandı; dalga yeniden deneme sayısı 3'e indirildi. Hâlâ onaysız tek yer tutucu: mermi sandığı basılı tutma süresi (`Ammo Crate Hold Seconds` 0,5).
 
 ## 6. Fab / Marketplace paketlerini bağlama
 
@@ -237,7 +284,8 @@ Tüm kaynak `Source/NewFPS/` altında (`Public/` başlıklar, `Private/` gövdel
 | `UNFWeaponComponent` | İki yuva + değiştirme, hitscan (saçmalı), cephane/reload/iptal, yayılım, recoil, ADS, Kedge, ıslaklık/taşıma kuralı, ağ. |
 | `UNFWeaponData` (+ `UNFPurserData`, `UNFGafferData`), `UNFMeleeData`, `UNFMovementData`, `UNFRulesData` | Designer verisi. |
 | `UNFHealthComponent` | Can, tek hasar hattı (`ApplyDamage`), yenilenme, kaldırma, sunucu tarafı hasar olayı. |
-| `UNFInteractionComponent` | Basılı tutma etkileşimleri (sandık alma, kaldırma) ve taşıma; sunucu otoriter. |
+| `UNFInteractionComponent` | Basılı tutma etkileşimleri (sandık alma, kaldırma, ikmal noktası) ve taşıma; sunucu otoriter. |
+| `ANFSupplyPoint` | İlk yardım kutusu / mermi sandığı: tek sınıf, örnekte `Supply Type`. Etkiyi sunucu uygular (`ReviveTo`, `AuthAddReserveAmmo`); harcanan kullanım replike. |
 | `ANFStrongbox`, `ANFWinchPoint`, `ANFGameState` | Ganimet, teslim ağı, replike kota sayacı ve görev sonucu. |
 | `ANFTideManager`, `UNFTideData`, `UNFWetnessComponent`, `ANFSluiceZone` | Gelgit (bkz. ADR-001). |
 | `ANFEnemyBase`, `ANFScuttler`, `ANFAttendant`, `ANFEnemyProjectile` | Düşmanlar: `AAIController` + C++ durum makinesi + NavMesh `MoveTo`. **Behavior Tree varlığı yok.** |
@@ -253,7 +301,7 @@ Tüm kaynak `Source/NewFPS/` altında (`Public/` başlıklar, `Private/` gövdel
 
 **Hasar hattı.** `taban hasar × mesafe eğrisi × bölge çarpanı × DamageTakenMultiplier` → cana kırpılır. Tek fonksiyon, `LogNewFPS Verbose` ile loglanır. Saçmalı atışta mesafe ve bölge saçma başına hesaplanıp toplanır.
 
-**Replikasyon.** Can ve "0 can" durumu herkese. Eldeki silahın cephanesi yalnız sahibine; etkin yuva herkese. ADS ve reload sahibi hariç herkese. Yaşam durumu, kanama süresi, taşınan sandık herkese; süren etkileşim yalnız sahibine. Düşmanlarda hareket (ACharacter), can ve görsel durum (`ENFEnemyVisualState` + saldırı kimliği). Su yüksekliği ve ıslaklık replike edilmez.
+**Replikasyon.** Can ve "0 can" durumu herkese. Eldeki silahın cephanesi yalnız sahibine; etkin yuva herkese. ADS ve reload sahibi hariç herkese. Yaşam durumu, kanama süresi, taşınan sandık herkese; süren etkileşim yalnız sahibine. İkmal noktasında yalnız harcanan kullanım sayısı (herkese); kalan hak her makinede bundan ve oyuncu sayısından türetilir (geç katılan oyuncu hakkı kendiliğinden artırır). Düşmanlarda hareket (ACharacter), can ve görsel durum (`ENFEnemyVisualState` + saldırı kimliği). Su yüksekliği ve ıslaklık replike edilmez.
 
 **Çarpışma.** `Weapon` adlı özel iz kanalı (`ECC_GameTraceChannel1`, kodda `NF_ECC_Weapon`). Düşman kapsülleri bu kanalı yok sayar; mermi yalnız isabet hacimlerine çarpar (`NF.Head` etiketli hacim = zayıf nokta).
 
@@ -266,11 +314,23 @@ Tüm kaynak `Source/NewFPS/` altında (`Public/` başlıklar, `Private/` gövdel
 **Bu turda yapılmayanlar (spec'te var):**
 
 - Coyote time, jump buffer, koşudan ateşe geçiş gecikmesi (0,20); viewmodel FOV 70; head-bob/screen shake.
-- Kilitli dolap (15 sn çevirme kolu), ilk yardım kutusu, mermi sandığı aktörü (sunucu fonksiyonu hazır: `AuthAddReserveAmmo`), vinç hattına kancalanma (10:30). Teslim edilen sandık hemen sayılır ve geri alınamaz (spec: çıkışta sayılır).
-- Attendant: siper kullanımı (yerine rastgele yer değiştirme), alçak siperde diz kırma, devriye, 8+ sn aynı siperdeki oyuncunun üstüne gitme, suya gönüllü girmeme (d ≥ 30) için yol maliyeti. Geri çekilme, elle konmuş noktalar yerine NavMesh'ten örneklenen en yüksek noktaya yürür.
+- Kilitli dolap (15 sn çevirme kolu) ve vinç hattına kancalanma (10:30): spec Revizyon 3'te ertelendi. Teslim edilen sandık hemen sayılır ve geri alınamaz (spec artık böyle).
+- Attendant: siper kullanımı (yerine rastgele yer değiştirme), alçak siperde diz kırma, devriye, 8+ sn aynı siperdeki oyuncunun üstüne gitme, su için NavMesh yol maliyeti (hepsi spec'te ertelendi). Geri çekilme hedefi elle konmuş noktalardan değil NavMesh örneklerinden seçilir.
 - Scuttler: yolunu suyun içinden seçme (nav alan maliyeti). İsabet hacimleri telgraf pozuyla birlikte hareket etmez.
-- Doğuş: flood'da "su çizgisinin en çok 800 cm gerisi" kuralı ve "ilk oyuncu Half'a basınca" tetiği (1:00'da doğar).
-- Telgraf sesleri, bark'lar, çan, Aggie/tannoy satırları (yalnız bağlama noktaları var), telemetri CSV.
+- Telgraf sesleri, bark'lar, çan, Aggie/tannoy satırları (yalnız bağlama noktaları var).
+- **Telemetri CSV** (spec §1.5). Yalnız iki kalem `LogNewFPS` satırı olarak var: kısa devre ayrımı ve atlanan dalga (§2.3). Düşme nedeni, ıslaklık süreleri, çan anındaki kat, silah × düşman öldürmeleri, sandık zamanları yok; spec §13.3'e göre bunlar olmadan oturum §1.4 ölçütlerine sayılmaz.
+- İkmal noktasında ses/VFX bağlama olayı, kutunun boşaldığını gösteren görsel durum (yalnız HUD yazısı var).
+
+**Üçüncü turda bu listeden çıkanlar (spec §13.3'ün üç şartı):** Attendant'ın suya gönüllü girmemesi ve geri çekilme hedefi (§5.2.1 K1–K4); Drift doğuşunda görüş hattı istisnası, `Max Retries` 3, atlanan dalga logu (§7.5); ilk yardım kutusu ve mermi sandığı (`NF Supply Point`). "Su çizgisinin 800 cm gerisi" ve "ilk oyuncu Half'a basınca" doğuş kuralları spec'ten kaldırıldığı için artık eksik sayılmıyor.
+
+**Üçüncü turun bilinen sınırları (hiçbiri gözlenmedi):**
+
+- Geri çekilme hedefi rastgele NavMesh örneklemesidir (16 örnek, 3000 cm). 1:30 eğimli kumsalda diskin kabaca beşte biri 50 cm yüksektedir; bir aramada aday çıkmazsa 1 sn sonra yeniden denenir. Motorun `GetRandomReachablePointInRadius` dağılımı ölçülmedi: Attendant flood'da kumsalda takılıp kendiliğinden kısa devre yapıyorsa `Telemetry ShortCircuit ... spontaneous` oranı bunu gösterir.
+- K1 yalnız **hedefi** süzer; yol sudan geçebilir (spec K5). Attendant suya 40 cm girince K2 onu çıkarır. Oyuncuya yaklaşma emri (görüş yok ya da menzil dışı) oyuncuyu hedef alır; Attendant kendi ayağı 40 cm suya girene kadar yürür, sonra durur ya da çekilir.
+- `No Retreat Floor Z` dünya Z'sidir; `Water Z Offset` ile kaydırılmış düz test haritasında anlamını yitirir.
+- Kısa devre telemetrisinde "itilmiş", düşmanın aldığı her itmeyi sayar (sendeleme, Kedge, solo spare line); hepsi oyuncu kaynaklıdır. Attendant'ın Shove'u oyuncuyu iter, Attendant'ı değil; sayılmaz.
+- İlk yardım kutusunun kalan hakkı oyuncu sayısından canlı türetilir: bir oyuncu oturumdan çıkarsa kalan hak bir azalır.
+- İkmal noktası yalnız seviyeye elle yerleştirilmek için yazıldı; `Supply Type` replike değildir, çalışma anında spawn edilirse istemci türü bilemez.
 - Gamepad aim assist, tepki eğrisi, ayarlanabilir dead-zone.
 
 **Bilinen sınırlar:**
@@ -299,7 +359,12 @@ Tüm kaynak `Source/NewFPS/` altında (`Public/` başlıklar, `Private/` gövdel
 9. **`AActor::SetReplicateMovement`, `SetNetUpdateFrequency`, `ACharacter::LaunchCharacter`, `UProjectileMovementComponent::OnProjectileStop`**: uzun süredir kararlı, ama bu sürümde doğrulanmadı.
 10. **Unity build ad çakışması**: `.cpp` dosyalarındaki yardımcı ad alanları (`NFWeapon`, `NFCharacter`, `NFEnemy`, `NFScuttlerConst` …) benzersiz tutuldu; "redefinition" hatası çıkarsa ilgili ad alanını yeniden adlandırın.
 11. **Niagara** ve **`Config/DefaultEngine.ini` çarpışma profilleri**: ilk turdaki gibi. Yanlışsa derlemeyi bozmaz ama tetikleyici hacimler mermiyi durdurur.
-12. **Çalışma zamanı (derleme değil)**: fare dikey yönü (`bInvertLookY`); gri kutu renkleri motorun `BasicShapeMaterial`'ındaki `Color` parametresine bağlı, yoksa düşman durum renkleri ve lamba görünmez (pozlar yine görünür); `ServerTravel("?Restart")` PIE'de çalışmayabilir.
+12. **Üçüncü tur (yeni kod; hepsi mevcut kalıpların tekrarı, yeni motor API'si yok):**
+    - `NFSupplyPoint.h/.cpp` yeni dosya: `Source/` altına dosya eklendiği için proje dosyalarını yeniden üretin (§1 adım 2). Kurucuda `bReplicates = true` (compile-review §2.5 ile aynı kalıp ve aynı hazır düzeltme: `SetReplicates(true)`), `AGameStateBase::PlayerArray` okuması (`NFEnemyDirector.cpp` ile aynı).
+    - `NFAttendant.cpp` `TryStartRetreat`: `TArray<FVector, TInlineAllocator<16>>` (spawner'daki kalıp) ve `FMath::Max(double, double)` (`FVector::Z`). Karışık tür hatası çıkarsa satır bu fonksiyondadır.
+    - `ENFInteraction` enum'una `Supply` eklendi (sona; replike değerler kaymaz). `NFHUD.cpp` `DrawMission` içinde iki `TEXT()` sabiti arasında üçlü ifade (`bFirstAid ? TEXT(..) : TEXT(..)`): derleyici itiraz ederse iki dalı `FString(...)` ile sarın.
+    - `NFEnemyDirector.cpp` artık `NFTideManager.h` ve `NewFPS.h` içeriyor (log için).
+13. **Çalışma zamanı (derleme değil)**: fare dikey yönü (`bInvertLookY`); gri kutu renkleri motorun `BasicShapeMaterial`'ındaki `Color` parametresine bağlı, yoksa düşman durum renkleri ve lamba görünmez (pozlar yine görünür); `ServerTravel("?Restart")` PIE'de çalışmayabilir.
 
 ## Git LFS (ilk ikili varlıktan önce, bir kez)
 

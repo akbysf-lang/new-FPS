@@ -97,6 +97,24 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction", meta = (ClampMin = "0.0", Units = "s"))
 	float PickupHoldSeconds = 0.5f;
 
+	// ---- Supply points (6.1 first aid box, 4.2 ammo crate): ANFSupplyPoint ----
+
+	/** Hold Interact this long at a first aid box. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Supply", meta = (ClampMin = "0.0", Units = "s"))
+	float FirstAidHoldSeconds = 1.5f;
+
+	/** A first aid box brings the health up to this (capped by MaxHealth). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Supply", meta = (ClampMin = "1.0"))
+	float FirstAidHealth = 100.f;
+
+	/** Uses per box = players in the session x this. The uses belong to the team, not to a player. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Supply", meta = (ClampMin = "0"))
+	int32 FirstAidUsesPerPlayer = 1;
+
+	/** Hold Interact this long at an ammo crate. Not in the spec; developer placeholder (same as lifting a strongbox). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Supply", meta = (ClampMin = "0.0", Units = "s"))
+	float AmmoCrateHoldSeconds = 0.5f;
+
 	// ---- Quota (6.4) ----
 
 	/** Quota = players + this... */

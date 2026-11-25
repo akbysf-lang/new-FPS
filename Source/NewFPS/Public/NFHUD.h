@@ -12,7 +12,7 @@ class UNFWeaponComponent;
 
 /**
  * Minimal Canvas HUD: spread crosshair, weapon and ammo, health / downed timer, hit marker, tide clock,
- * strongbox counter and interaction progress. No UMG assets required.
+ * strongbox counter, supply point prompt and interaction progress. No UMG assets required.
  */
 UCLASS()
 class NEWFPS_API ANFHUD : public AHUD
