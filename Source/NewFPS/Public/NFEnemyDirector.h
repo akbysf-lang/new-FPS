@@ -5,7 +5,9 @@
 #include "Templates/SubclassOf.h"
 #include "NFEnemyDirector.generated.h"
 
+class AActor;
 class ANFEnemyBase;
+class UObject;
 
 /**
  * Server-side bookkeeping shared by all enemies: who is alive, and attack tokens.

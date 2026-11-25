@@ -5,7 +5,9 @@
 #include "NFTypes.h"
 #include "NFHUD.generated.h"
 
+class AActor;
 class ANFCharacter;
+class APawn;
 class UNFWeaponComponent;
 
 /**

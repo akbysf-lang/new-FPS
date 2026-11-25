@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "NFTargetDummy.generated.h"
 
+class AController;
 class UMaterialInstanceDynamic;
 class UNFHealthComponent;
 class USceneComponent;

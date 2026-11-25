@@ -314,3 +314,5 @@ LFS kurulu değilken eklenen ikili dosyalar depoya doğrudan girer ve sonradan t
 ## Gelgit sistemi
 
 Mimari ve doğrulama adımları: [adr-001-tide-and-network.md](adr-001-tide-and-network.md). Seviyeye bir `ANFTideManager` yerleştirin; `NFTideData` varlığı atanmazsa sınıf varsayılanları kullanılır. Varsayılanlar artık spec §3.2'nin 12 dakikalık, parça parça doğrusal çizelgesidir (tek sefer, döngüsüz; 5:00'te dönüş). Uyarılar ve HUD saati "sonraki çizelge satırına" değil **evre adının değişmesine** (suyun dönmesine) kalan süreyi sayar; çizelgede aynı adlı ardışık satırlar (F1–F5) tek evre olarak okunur.
+
+> Güncel ve bağımsız derleme incelemesi, hazır düzeltmeler ve ilk derleme kontrol listesi: [compile-review.md](compile-review.md).
