@@ -1,6 +1,6 @@
 # EBBSHIFT — Prototip Spesifikasyonu (Aşama 3)
 
-**Hazırlayan:** game-designer · **Tarih:** 25 Kasım 2026 · **Durum:** v1, Revizyon 2 (artist incelemesi sonrası düzeltmeler; değişiklik dökümü §12) — uygulamaya hazır
+**Hazırlayan:** game-designer · **Tarih:** 25 Kasım 2026 · **Durum:** v1, Revizyon 3 (kod incelemesi sonrası: yer tutucular ve sapmalar karara bağlandı, §13; Revizyon 2 dökümü §12) — uygulamaya hazır
 **Bağlı belgeler:** [game-story.md](game-story.md) (§3 dünya kuralları, §9 teslim listeleri) · [market-research.md](market-research.md) (§6 geri çekilme kapısı, §7 konsept)
 
 > Belge dili Türkçe; oyun içi adlar ve satırlar İngilizce.
@@ -80,7 +80,9 @@
 
 ### 1.5 Telemetri (developer; CSV, döngü başına)
 
-Teslim edilen sandık sayısı ve zamanı · her düşme: zaman, konum, neden (Scuttler / Attendant / boğulma), o andaki ıslaklık durumu · oyuncu başına ıslaklık durumlarında geçen süre · çan anında (5:00) her oyuncunun katı · silah × düşman × düşman ıslak/kuru öldürme sayıları · Attendant kısa devre sayısı · her sandığın alındığı ve bırakıldığı zaman/konum.
+Teslim edilen sandık sayısı ve zamanı · her düşme: zaman, konum, neden (Scuttler / Attendant / boğulma), o andaki ıslaklık durumu · oyuncu başına ıslaklık durumlarında geçen süre · çan anında (5:00) her oyuncunun katı · silah × düşman × düşman ıslak/kuru öldürme sayıları · Attendant kısa devre sayısı, **ikiye ayrılmış: "itilmiş" (kısa devreden önceki 4 sn içinde oyuncu kaynaklı itme/sendeleme aldı) ve "kendiliğinden"** · atlanan (doğamayan) dalga sayısı ve zamanı · her sandığın alındığı ve bırakıldığı zaman/konum.
+
+**Geçerlilik denetimi (R3):** "kendiliğinden" kısa devreler toplamın %30'unu aşıyorsa Attendant su davranışı (§5.2.1) bozuktur; o oturumun Ölçüt 4 verisi sayılmaz. Flood evresinde atlanan Drift dalgası varsa o döngünün eğlence puanı sayılmaz.
 
 ---
 
@@ -107,7 +109,7 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 |---|---|---|
 | Yürüme (varsayılan) `MaxWalkSpeed` | **500** | Siperden sipere 10–15 m = 2–3 sn |
 | Koşu (sprint) | **650** (×1,3); yalnız ileri ±45°; ateş edilemez | Kaçış aracı, savaş aracı değil. Islak Scuttler'dan (504) ancak koşarak kaçılır |
-| Koşudan ateşe geçiş | 0,20 | |
+| Koşudan ateşe geçiş | **0** (prototip; hedef değer 0,20 ertelendi, §13) | Ateş tuşu koşuyu keser ve hemen ateş eder. Daha duyarlı olan sürüm önce denenir; "koşarak ateş baskın" gözlenirse 0,20 eklenir |
 | ADS'de hareket | 300 (×0,6) | |
 | Çömelme hızı | 250 | |
 | `MaxAcceleration` | 5000 (0→500: 0,10 sn) | Anlık tepki (skill: ≤ 0,1 sn) |
@@ -115,7 +117,7 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 | `JumpZVelocity` / `GravityScale` | 450 / 1,2 | Zıplama yüksekliği **86 cm**, havada 0,77 sn. 110'luk alçak siperin üstünden atlanamaz: siper bilinçli karar olur |
 | Yatay zıplama mesafesi (yürüme / koşu) | ~380 / ~500 | Gym'de doğrulanacak; haritada zorunlu boşluk atlaması yok |
 | `AirControl` | 0,35 | |
-| Coyote time / jump buffer | 0,10 / 0,10 | |
+| Coyote time / jump buffer | 0,10 / 0,10 — **ilk playtest'te yok** (ertelendi, §13) | Haritada zorunlu boşluk atlaması yok (§2.2), çekirdek soruyu etkilemez. "Zıplamam yenildi" notu çıkarsa ya da ekip dışı oyunculu oturumlardan önce eklenir |
 | `MaxStepHeight` | 45 | |
 | Yürünebilir eğim | ≤ 40°; haritadaki en dik rampa 26,6° | |
 | Silah değiştirme | 0,40 | Skill: < 0,5 sn. Yalnız Purser ↔ Gaffer için geçerlidir; **Kedge silah yuvası değildir**, ayrı tuşla silah değiştirmeden savrulur (§4.3) |
@@ -131,7 +133,7 @@ Fantezi "işini bilen, soğukkanlı işçi": hareket **ağır değil ama akrobat
 | Silah | Yalnız **Purser**, yalnız hip-fire; ADS yok; **şarjör değiştirilemez** (tek el) | Purser'ın "işi" bu (hikâye §9.6). 6 mermi biter → sandığı bırak ya da arkadaşına güven |
 | Kedge / Gaffer | Kullanılamaz | Sol kol sandıkta |
 | Kadraj | Strongbox **görünür**: sol kolun altında, ekranın sol alt köşesinde (ekran alanının en çok ~%15'i; nişangâha ve ekran merkezine taşmaz). Purser sağ elde, bel hizasında eğik | Oyuncu ve klibi izleyen "yük taşıyor"u HUD'sız okur; tek el / reload yok / Kedge yok kuralının görsel nedeni budur. Prototipte kameraya bağlı vekil kutu yeter |
-| Bırakma | Anında (tuş ya da silah değiştirme); sandık olduğu yere düşer, fırlatılmaz | |
+| Bırakma | Anında (etkileşim tuşu ya da silah değiştirme tuşu); sandık olduğu yere düşer, fırlatılmaz. Taşırken silah değiştirme tuşunun **tek işi bırakmaktır**; aynı basış silah değiştirmez (Purser elde kalır) | Tek tuş tek iş: "bırak ve Gaffer'a geç" iki basıştır, kazara bırakıp silahsız kalma olmaz (R3: koddaki davranış onaylandı) |
 | Alma | 0,5 sn basılı tut | |
 | Hasar alınca | Düşmez; yalnız oyuncu düşerse (0 can) bırakılır | Her vuruşta düşen sandık sinir bozar |
 
@@ -207,10 +209,12 @@ Derinlik `d = Su Z − ayak Z`. Oyuncu ve AI aynı ölçümü kullanır; eşikle
 | Durum | d (cm) | Hareket | Silah | Diğer |
 |---|---|---|---|---|
 | **Dry** | < 50 | Etki yok (20+ cm'de yalnız sıçrama sesi) | Etki yok | |
-| **Knee** (diz) | 50–99 | Tüm hızlar **×0,75** (yürüme 375, yüklü 300); zıplama ×0,8 | Etki yok | Ayak sesi yüksek |
+| **Knee** (diz) | 50–99 | Tüm hızlar d = 50'de **×0,75** (yürüme 375, yüklü 300), derinlikle **sürekli** azalarak d = 100'de ×0,5'e iner (d = 75'te ×0,625: yürüme 312, yüklü 250); zıplama ×0,8 | Etki yok | Ayak sesi yüksek |
 | **Waist** (bel) | 100–164 | **×0,5** (yürüme 250, yüklü 200); koşu ve zıplama yok | Gaffer kullanılamaz (iki el; otomatik Purser'a geçer). Purser yalnız hip-fire, yayılım ×1,5, reload süresi ×1,25 | Sandık alınabilir/taşınabilir |
 | ↳ alt eşik **Chest** (göğüs) | 135–164 | ×0,4 (yürüme 200) | **Ateşli silah yok**; yalnız Kedge | Sandık alınamaz (eldeki taşınmaya devam eder) |
 | **Overhead** (baş üstü) | ≥ 165 | ×0,4 | Hiçbiri | Nefes 8 sn, sonra 20 can/sn. Eldeki sandık düşer |
+
+**Hız sürekli, yetenekler basamaklı (R3, ADR-001 onaylandı):** hız çarpanı derinliğin sürekli fonksiyonudur — d ≤ 35: ×1,0 → d = 50: ×0,75 (`WadeBlendDepth` 15 cm) → d = 100: ×0,5 → sonrası tablo. Koşunun kesilmesi, zıplamanın kapanması ve silah kilitleri ise tablodaki eşiklerde **basamaklıdır** (histerezis 8 cm, gecikme 0,2 sn). Gerekçe: basamaklı hız, istemci tahmini ile sunucu arasında lastik bant üretir; yetenek kilidi ise açık/kapalı okunmalıdır ("artık koşamıyorum" bir andır, eğri değil). Sonuç: diz bandı eski tablodan serttir (ortalama ×0,625). Terastaki 30 cm su hâlâ etkisizdir (35'in altında). §9 #4'teki "diz çarpanı" artık d = 50'deki değerdir.
 
 Gerekçe: hikâye §3 kural 3 ile birebir (diz üstü yavaşlar, göğüste silah yok, baş üstünde boğulur). Bel eşiği ayrıca Wardens'ın kısa devre eşiğidir; oyuncu "ben belime kadar girebilirim, o giremez" asimetrisini öğrenir.
 
@@ -379,10 +383,11 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Can yenileme — Wet | 2 sn hasarsızlıktan sonra 6 can/sn | Yarım bırakılan Scuttler suda toparlar |
 | **Parched** | Kesintisiz 20 sn Dry kalınca: aldığı hasar ×1,5, tıkırtı kurur. Görsel: **değer sabit kalır (gövde koyu, L* ≤ 26)**; doygunluk düşer, yüzey tam matlaşır, kabuk sırtında ince tebeşir beyazı tuz çizgileri çıkar, kese ışıltısı söner ve süt rengine döner. Suya girince anında sıfırlanır | "Kuruya çek" karşı oyunu (hikâye §4.2). Eski "renk solar" ifadesi gövdeyi açmak demek değildir: açılan gövde kuru zeminle karışır, tam "tek atışlık" hedefin seçileceği anda. Yeterince ayırt edilmezse ikinci aday siluet değişimidir (kabuk kenarlarının pul pul kalkması), değer değişimi değil |
 | Saldırı 1 — **Pinch** | Erişim 150. Telgraf 0,5 sn (kıskaçlar kalkar + tek sert "klak") → 12 hasar → toparlanma 0,8 sn; bekleme 1,5 sn | Geri adımla kaçınılır |
-| Saldırı 2 — **Lunge** (yalnız Wet) | 300–500 mesafeden. Telgraf 0,6 sn (çöker + tıslama, su sıçratır) → 0,4 sn sıçrayış → 18 hasar; ıskalarsa 1,0 sn açıkta | Yana adım; ıskalayan kolay hedef |
+| Saldırı 2 — **Lunge** (yalnız Wet) | 300–500 mesafeden. Telgraf 0,6 sn (çöker + tıslama, su sıçratır) → 0,4 sn sıçrayış → 18 hasar; ıskalarsa 1,0 sn açıkta; isabet ederse 0,4 sn toparlanma (R3: onaylandı) | Yana adım; ıskalayan kolay hedef |
 | Saldırı token'ı | **Hedef oyuncu başına 2** eşzamanlı saldıran; token'sız olanlar 250–400 mesafede döner | Okunabilirlik: 6 yengeç aynı anda vurmaz |
-| Sendeleme | Ölmeyen her isabette 0,3 sn duraklar; Gaffer/Kedge iter | |
-| Suyla davranış | Yolunu suyun içinden seçer (ıslak zemin maliyeti düşük); düşmüş oyuncuya saldırmaz | |
+| Sendeleme | Ölmeyen her isabette 0,3 sn duraklar ve **süren telgrafı (Pinch/Lunge hazırlığı) iptal eder**; saldırı baştan kurulur. Havadaki sıçrayış iptal olmaz | R3: koddaki davranış onaylandı. "Vurdum, saldırısı kesildi" duraklamadan daha okunaklıdır ve güç fantezisine uyar; Scuttler zaten iki isabette öldüğü için dengeye etkisi küçüktür. Token saldırganda kalır |
+| İtme | Kedge 200 cm. Mermi: tek atışta uygulanan hasar ≥ **45** ise **120 cm** (`HeavyHitDamage` / `HeavyHitKnockback`) | R3: yer tutucu onaylandı. 45 = Gaffer'ın 3 saçması; **Purser gövde atışı (50) da iter**, bilerek kabul edildi: taşıyıcının tek silahına küçük bir nefes verir, ikinci atış zaten öldürür. Kedge'in itmesi (200) daha büyük kalır. Yüklü oyuncu Scuttler'ı zahmetsiz uzak tutuyorsa eşik 55'e çekilir |
+| Suyla davranış | Düşmüş oyuncuya saldırmaz. Yolunu suyun içinden **seçmez**: en kısa yoldan gelir (nav alan maliyeti ertelendi, §5.1.1) | |
 | Doğuş | D noktaları, yalnız nokta su altındayken (§7.5) | "Suyla gelir" |
 
 **Bark yerine ses işaretleri (oynanış bilgisi):**
@@ -395,6 +400,18 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Wet → Dry | Islak şapırtı kesilir, kuru tıkırtı | Yavaşladı |
 | Parched | Çatırtılı, kuru ses | Tek atışlık |
 | Suya geri girdi | "Şlup" + koro kalınlaşır | Hızlandı, iyileşiyor |
+
+#### 5.1.1 Prototipte Scuttler'ın suyla ilişkisi: ne şart, ne ertelendi (R3)
+
+Kancanın Drift yarısı ("su Drift'i besler") **yol seçimiyle değil durumla** taşınır ve durumların hepsi kodda vardır: Wet hız 504 / Dry 360 / Parched 300, suda can yenileme, Lunge yalnız Wet, 20 sn kuruda Parched (×1,5 hasar), doğuş yalnız su altındaki noktadan. Oyuncunun "kuruya çek, ıslakken kaç" kararı bunlarla sınanır. Bu yüzden:
+
+| Davranış | Karar | Neden |
+|---|---|---|
+| Yolu sudan seçme (nav alan maliyeti) | **Ertelendi** (prototipten sonra) | Yalnız eşit uzunlukta bir ıslak ve bir kuru yol varken fark yaratır; yokuş yukarı kovalamada en kısa yol zaten sudan çıkar. Yokluğu oyuncunun lehinedir (Scuttler kuruda kalıp yavaşlar), soruyu geçersiz kılmaz |
+| Flood'da "su çizgisinin en çok 800 cm gerisi" doğuş kuralı | **Kaldırıldı** (§7.5) | Kural, tabloda yazan sabit noktalarla tutmuyordu: deniz kenarı noktaları 5:10'dan, iskele altı 5:42'den sonra geçersiz kalıyor, 6:00 ve 6:20 dalgaları doğamıyordu. Kodun yaptığı (deniz kenarı her zaman, diğerleri su altındayken) doğru çözüm |
+| İsabet hacimlerinin telgraf pozuyla hareketi | Ertelendi (dikey dilim) | Gövde kutusu geniş; poz farkı küçük |
+
+Bunun yerine şart olan tek şey doğuşun **gerçekten olmasıdır**: §7.5'teki görüş hattı istisnası.
 
 ### 5.2 Attendant (The Wardens — temel menzilli)
 
@@ -409,16 +426,16 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Hız | Devriye 300, yer değiştirme 420 | Yüklü oyuncuyu kovalayamaz; işi alan tutmak |
 | Tercih menzili / azami | 1200–2500 / 3500 | Purser'ın tam hasar bandı (≤ 20 m) içinde |
 | Saldırı 1 — **Punch Burst** | Telgraf 0,7 sn (lamba kırmızı + "klik-klak") → 0,15 sn arayla 3 mermi (yavaş mermi, 3500 cm/sn, öngörüsüz nişan, yayılım 1,5°) → mermi başına 10 hasar → bekleme 2,0 sn | 25 m'de uçuş 0,7 sn: yana yürüyen oyuncu kaçar, duran vurulur. Tam isabetle ~10 can/sn |
-| İlk yaylım | Fark ettikten sonraki ilk yaylım kasten ıskalar | "Zeki görünür"; oyuncuya sipere girme süresi |
+| İlk yaylım | Fark ettikten sonraki ilk yaylım kasten ıskalar: nişan **yatayda 6°** yana kaydırılır (`FirstBurstMissAngle`; R3: yer tutucu onaylandı) | "Zeki görünür"; oyuncuya sipere girme süresi. 6° = 12 m'de 126 cm, 25 m'de 263 cm: mermi oyuncunun yanından görünür biçimde geçer, 1,5°'lik yayılımla bile kapsüle (yarıçap 34) değmez. Yatay olmalı; yere ya da havaya giden mermi görülmez |
 | Servis (reload) | 4 yaylımdan sonra 3,0 sn açıkta. Lamba **kırmızıya dönmez ama kararmaz**: sakin renginde (`#FFF4D6`) düşük şiddetle 1 Hz göz kırpar; baş öne eğik, göğüs kapağı açık. Zayıf nokta bu sürede etkin kalır (×2,0) | Bark ile fırsat penceresi. Oyuncunun en çok vurması gereken anda hedef göstergesi kapanmaz. Kural: kırmızı = ateş geliyor, yavaş göz kırpma = savunmasız. Kehribar kullanılmaz (Etkileşim sarısıyla karışır); ikinci işaret baş/kapak pozu |
-| Saldırı 2 — **Shove** | Oyuncu ≤ 150: telgraf 0,4 sn (kol geri) → 8 hasar + 300 cm itme → **toparlanma 0,50 sn** (toplam 0,90; toparlanmada ateş etmez, yer değiştirmez) | Köşede sıkıştıran oyuncuya karşılık; oyuncuyu suya/rampadan aşağı atabilir. Toparlanma, ıskalatan ya da itilen oyuncuya karşılık penceresi verir (0,50 = Purser ile bir zayıf nokta atışı + hazırlık) |
+| Saldırı 2 — **Shove** | Oyuncu ≤ 150: telgraf 0,4 sn (kol geri) → 8 hasar + 300 cm itme → **toparlanma 0,50 sn** (toplam 0,90; toparlanmada ateş etmez, yer değiştirmez) → **bekleme 1,5 sn** (toparlanma bitiminden sayılır; R3: yer tutucu onaylandı). Telgraf sonunda isabet payı: erişim + 40 cm (onaylandı) | Köşede sıkıştıran oyuncuya karşılık; oyuncuyu suya/rampadan aşağı atabilir. Toparlanma, ıskalatan ya da itilen oyuncuya karşılık penceresi verir (0,50 = Purser ile bir zayıf nokta atışı + hazırlık). Bekleme: döngü 2,4 sn, yakın dövüşte ~3 can/sn; itilen oyuncu 300 cm uzakta ikinci Shove'dan önce iki Purser atışı sığdırır, art arda itilerek rampadan aşağı zincirlenmez |
 | Ateş token'ı (küresel) | 1 oyuncu: 2 · 2 oyuncu: 3 · 3–4 oyuncu: 4 | Token'sız olan siperde bekler ya da yer değiştirir |
 | Sendeleme | Tek atışta ≥ 80 hasar (Purser zayıf nokta, Gaffer 6+ saçma): 0,6 sn, telgrafı keser, 150 cm geri iter | Saldırganlığı ödüllendirir; suya itme aracı |
-| **Su: kaçınma** | Kendi ayağından d ≥ 30 olan zemine gönüllü girmez | |
+| **Su: kaçınma** | d ≥ **40** (`AvoidDepth`) olan zemine gönüllü girmez. Prototipte yol maliyetiyle değil **hedef süzgeci + kaçış kuralıyla** uygulanır (§5.2.1, **ilk playtest'ten önce şart**) | R3: eşik 30 → 40. Eski 30, High Water'da terastaki su derinliğiyle (30) tam çakışıyordu: W-High'da doğan Attendant kendi zeminini "girilmez" sayardı. 40, teras suyu (30) ile diz eşiği (50) arasındadır |
 | **Su: diz (50–99)** | Hız ×0,7; kıvılcım | |
 | **Su: kısa devre** | d ≥ 100 kesintisiz **2,0 sn** → devre dışı (ölüm) | Hikâye §4.1. Prototipte çevreye elektrik hasarı **yok** (kapsam) |
-| **Su: geri çekilme** | Su yükselirken ayağının 150 cm altına geldiğinde bir üst kata/kuru bölgeye taşınır; taşınırken ateş etmez (elindeki yaylımı bitirir) | Sırtı dönük Attendant = ödül; aynı zamanda yukarıda yoğunlaşmayı üretir |
-| Siper | Tam ya da alçak siper arkasında durur; 6–10 sn'de bir siper değiştirir | |
+| **Su: geri çekilme** | Su yükselirken ayağının 150 cm altına geldiğinde daha yüksek zemine taşınır; taşınırken ateş etmez (elindeki yaylımı bitirir). Hedef seçimi §5.2.1 (**ilk playtest'ten önce şart**); en üst katta tetiklenmez | Sırtı dönük Attendant = ödül; aynı zamanda yukarıda yoğunlaşmayı üretir |
+| Siper | **Prototipte siper kullanmaz** (R3: ertelendi). 6–10 sn'de bir, 800 cm yarıçapta, oyuncuyu tercih menzilinde tutan rastgele erişilebilir bir noktaya yer değiştirir (yarıçap yer tutucusu onaylandı); hedef §5.2.1 süzgecinden geçer. Hedef davranış (dikey dilim): tam ya da alçak siper arkasında durur, 6–10 sn'de bir siper değiştirir | Siper kullanımı Attendant'ı daha dayanıklı yapar ama suyla ilişkisini değiştirmez. Yokluğu yukarıyı **kolaylaştırır**: ilk turda "Attendant yok sayılıyor" gözlenirse önce §9 #8 (hasar/token) artırılır, siper yazılmaz |
 | Düşmüş oyuncu | Hedef almaz | |
 | Doğuş | W noktaları, yalnız nokta kuruyken (§7.5); 1,5 sn önce kepenk sesi | |
 
@@ -434,6 +451,28 @@ Tüm satırlar §5'teki can değerleriyle hesaplanarak doğrulandı; can, hasar 
 | Diz hizasında suda → **it, kısa devre fırsatı** | "Warning. No bathing after s— s— six." |
 | Geri çekiliyor → **sırtı dönük** | "Patrons are advised to move to higher ground." |
 | Devre dışı | "Thank you for visiting Carrow Sands." |
+
+"Loitering is not permitted." satırı ve bağlı davranış (8+ sn aynı siperdeki oyuncunun üstüne gitme) prototipte yoktur (ertelendi, §13).
+
+#### 5.2.1 Prototipte Attendant'ın asgari su davranışı (R3 — ilk playtest'ten önce şart)
+
+**Neden şart:** konseptin kancası "su Wardens'ı kısa devre yaptırır" cümlesidir ve Ölçüt 4 oyuncunun bunu **kasten** kullanmasını ölçer. Koddaki hâliyle Attendant (a) rastgele yer değiştirirken suyun içindeki bir noktayı seçebilir, (b) kumsalda 3000 cm içinde yeterince yüksek nokta bulamadığı için hiç geri çekilmez ve su gelince kendiliğinden kısa devre yapar, (c) Half'tan çekilirken hepsi aynı en yüksek noktaya yürür. Bu durumda oyuncu "su onları benim yerime öldürüyor" görür; kısa devre bir oyuncu kararı olmaktan çıkar ve prototipin sorusu geçerli biçimde sınanamaz. Aşağıdaki beş kural bunu kapatır; hepsi mevcut `TryReposition` / `TryStartRetreat` içinde küçük değişikliktir, yeni sistem değildir.
+
+Tanım: bir noktanın derinliği `d(P) = Su Z − P'nin zemin Z'si`. Zemin Z, NavMesh noktasının Z'sidir; Attendant'ın kendi zemini `aktör Z − 95`'tir (kapsül merkezi değil). Karşılaştırmalar **zeminden zemine** yapılır.
+
+| # | Kural | Sayı (veri) |
+|---|---|---|
+| K1 | **Hedef süzgeci.** Gönüllü her hareket hedefi (yer değiştirme, geri çekilme) seçilirken `d(P) ≥ AvoidDepth` olan aday atılır. Uygun aday yoksa yerinde kalır | `AvoidDepth` = 40 |
+| K2 | **Kaçış.** Kendi derinliği `≥ AvoidDepth` olduğunda (itilmiş, sendelemiş ya da yolu sudan geçmiş olabilir) su yükseliyor olsun olmasın hemen geri çekilme başlatır (K3 hedefiyle). Sendeleme ve Shove sırasında başlamaz; elindeki yaylımı bitirir. Kısa devre sayacı (d ≥ 100, 2,0 sn) bu sırada işlemeye devam eder | — |
+| K3 | **Geri çekilme hedefi.** 3000 cm yarıçapta NavMesh'ten örneklenen adaylardan geçerli olanlar: zemini Attendant'ın zemininden **en az 50 cm yüksek** ve K1'i geçen. Geçerliler içinde en yüksek adayın Z'sine 100 cm'den yakın olanlardan **rastgele biri** seçilir (tek "en yüksek nokta" değil). Geçerli aday yoksa yürümez, yerinde savaşır | `MinRetreatGain` 50 (zeminden zemine; koddaki 100 kapsül merkezi ile NavMesh zeminini karşılaştırdığı için fiilen ~195'ti ve kumsalda hiçbir aday geçmiyordu), `RetreatSearchRadius` 3000 (onaylandı) |
+| K4 | **En üst kat.** Kendi zemini `≥ NoRetreatFloorZ` ise "su 150 cm altımda" tetiği çalışmaz (K2 çalışır). Terastaki Attendant kuru adalara ve vinç platformuna yığılmaz, terasta kalır | `NoRetreatFloorZ` = 750 |
+| K5 | **Yol.** Yol maliyeti yoktur; yol sudan geçerse K2 yakalar. Ek iş istenmez | — |
+
+Beklenen sonuç: kumsaldaki Attendant flood'da adım adım yokuş yukarı çekilir (1:30 eğimde her çekilme en çok +100 cm kazandırır, bu yüzden art arda çekilir ve çoğu zaman sırtı dönüktür: §8.1'deki "sırtını dönüp kaçar"); Half'takiler çatılara ve terasa dağılır; terastakiler 30 cm suda savaşmayı sürdürür. Kısa devre, oyuncu onu suya ittiğinde ya da çıkışını kestiğinde olur.
+
+Uyarı: `High Water Z` 840'ın üstüne çıkarılırsa (§9 #9) teras derinliği `AvoidDepth`'i aşar ve terastaki Attendant'lar K2 ile kuru adalara kaçar; bu ayar denenirken `AvoidDepth` birlikte yükseltilir.
+
+**Ertelenenler (prototipten sonra / dikey dilim):** siper kullanımı ve siper değiştirme, alçak siperde diz kırma, devriye (kimseyi görmeyen Attendant yerinde bekler), "Loitering" baskısı, suya girmeme için nav alan maliyeti, elle konmuş geri çekilme noktaları. Hiçbiri kısa devre kuralını ya da "arada kalma" düzenini değiştirmez; düzen doğuş noktalarından gelir (§7.5).
 
 ### 5.3 Eşzamanlı düşman tavanı ve oyuncu sayısı çarpanı
 
@@ -457,7 +496,7 @@ Tavan doluyken gelen dalga atlanır, kuyruğa alınmaz.
 |---|---|---|
 | Azami can | 100 | İskelet varsayılanı |
 | Yenilenme | 5 sn hasarsızlıktan sonra 8 can/sn, **en çok 50'ye** kadar | Kısa nefes verir; tam iyileşme için risk gerekir |
-| İlk yardım kutusu | 2 adet (Half ve High, açıkta); kutu başına kullanım = oyuncu sayısı; 1,5 sn basılı tut → 100 can | Oyuncuyu siperden çıkarır (skill: alım riskli noktada) |
+| İlk yardım kutusu | 2 adet (Half ve High, açıkta); kutu başına kullanım = oyuncu sayısı; 1,5 sn basılı tut → 100 can. **Tam döngü playtest'inden önce şart** (R3; kodda henüz yok). Mermi sandığıyla (§4.2) aynı "ikmal noktası" aktörünün iki ayarı olarak yapılabilir | Oyuncuyu siperden çıkarır (skill: alım riskli noktada). Yenilenme 50'de durduğu için kutu olmadan oyuncu 12 dakikanın çoğunu yarım canla geçirir; ölüm süresi (aşağıda), Ölçüt 5 ve 8 bu kutu varsayılarak kuruldu. Kutu yokken yalnız Flood Drill oturumları geçerlidir |
 | Dost ateşi | Kapalı | |
 | Ölüm süresi (türetilmiş) | 2 Scuttler: ~12 can/sn → ~8 sn · + tam isabetli 2 Attendant: ~32 can/sn → ~3 sn | Tek fraksiyon affeder, **arada kalmak** öldürür |
 
@@ -479,7 +518,7 @@ Gerekçe: düşen oyuncuyu oyundan atmıyoruz (12 dakikalık döngüde seyirci k
 | Kural | Başlangıç |
 |---|---|
 | Düşman sayısı | M(1) = 1,0 (§5.3); Attendant ateş token'ı 2 |
-| **Spare line** | Görev başına 1 kez: 0 canda 3 sn sonra kendiliğinden kalkar, 40 can, 2 sn dokunulmazlık, 400 cm yarıçapta düşmanları iter |
+| **Spare line** | Görev başına 1 kez: 0 canda 3 sn sonra kendiliğinden kalkar, 40 can, 2 sn dokunulmazlık, 400 cm yarıçapta düşmanları **300 cm** iter (R3: yer tutucu onaylandı; ıslak Scuttler bu mesafeyi ~0,6 sn'de kapatır, 2 sn dokunulmazlıkla birlikte bir siper adımı kazandırır) |
 | İkinci düşme | Görev başarısız |
 | Kota | 2 sandık (§6.4) |
 | Fark edilen risk | Taşırken eskort yok. Solo'nun aracı: sandığı bırak-savaş-al ve Purser'ın 6 mermisi. Playtest ölçütü 7 bunu sınar |
@@ -488,14 +527,14 @@ Gerekçe: düşen oyuncuyu oyundan atmıyoruz (12 dakikalık döngüde seyirci k
 
 | Kural | Başlangıç | Gerekçe |
 |---|---|---|
-| Ganimet noktası | 3 kilitli dolap (A, B, C); her biri **2 Strongbox** | Zamandan fazla ganimet: açgözlülük kararı doğar |
-| Dolabı açma | 15 sn çevirme kolu (basılı tut; ilerleme korunur, birden çok oyuncu hızlandırmaz) | Ganimet noktasında savunulan bir an yaratır |
+| Ganimet noktası | 3 nokta (A, B, C); her biri **2 Strongbox**. **İlk playtest'te dolap yok: sandıklar açıkta durur** (R3) | Zamandan fazla ganimet: açgözlülük kararı doğar |
+| Dolabı açma | **Ertelendi** (R3; ilk tur verisinden sonra karar). Hedef: 15 sn çevirme kolu (basılı tut; ilerleme korunur, birden çok oyuncu hızlandırmaz) | Ganimet noktasında savunulan bir an yaratır. Ertelenebilir: çekirdek soru flood'daki tırmanıştır ve Flood Drill zaten "dolap açık" başlar. Bedeli: slack'te iş daha çabuk biter; Ölçüt 3 (açgözlülük) ya da 8 (kota) "flood başlamadan bitti" gösterirse önce kota +1 denenir (§9 #10), sonra dolap yazılır |
 | Erişim | Göğüs altı suda açılır/alınır (d < 135) | Erken, ıslak ve riskli almak mümkün; özel kural yok |
 | Taşıma | Oyuncu başına 1 sandık | |
-| Teslim | Vinç platformundaki yük ağına (400 × 400) bırak; istenildiği an bırakılabilir, çıkışta sayılır | Erken teslim edip geri inmek serbest |
+| Teslim | Vinç platformundaki yük ağına (400 × 400) bırak; istenildiği an bırakılabilir. **Bırakıldığı an sayılır ve geri alınamaz** (R3: koddaki davranış onaylandı; eski "çıkışta sayılır" kaldırıldı) | Erken teslim edip geri inmek serbest. Prototipte ağdaki sandığı tehdit eden hiçbir şey yok; "çıkışta sayma" oyuncuya karar vermiyordu. Anında artan sayaç, ikinci tura inme kararını HUD'dan okutur. Ağdaki sandığın çalınması/sürüklenmesi ileride istenirse kural yeniden açılır |
 | **Kota** | Oyuncu sayısı + 1 (solo 2 … dört kişi 5); azami 6 | Dört kişi tek seferde bitiremez: en az bir oyuncu ikinci kez iner |
-| Vinç | 10:30'da iner. Her oyuncu 3 sn'de kancalanır. Tüm ayaktakiler kancalanınca ya da 12:00'de görev biter | |
-| Sonuç | Başarı: ağda kota kadar sandık. Skor: sandık sayısı | Ekonomi yok; skor yeter |
+| Vinç | **İlk playtest'te kancalanma yok: görev 12:00'de biter** (R3: ertelendi). Hedef: 10:30'da iner, her oyuncu 3 sn'de kancalanır, tüm ayaktakiler kancalanınca ya da 12:00'de görev biter | Kancalanma yalnız erken bitirmeyi sağlar; Slack High savunması (2 dk) onsuz da oynanır. "Son iki dakika boş" notu çıkarsa eklenir. §3.4'teki 10:30 satırı ("Line's down. Clip on.") o zamana kadar gösterilmez |
+| Sonuç | Başarı: 12:00'de sayaç ≥ kota. Skor: sandık sayısı | Ekonomi yok; skor yeter |
 | Su altında kalan sandık | Yerinde kalır; ulaşabilen alır | |
 
 ---
@@ -606,13 +645,13 @@ Zaman bütçesi denetimi: C'den çan anında yüklü çıkan oyuncu L3 dibine d�
 
 | Tür | Nokta | Konum | Etkin olduğu koşul | Telgraf |
 |---|---|---|---|---|
-| Drift **D-Low** ×5 | Deniz kenarı ×4, iskele altı ×1 | Y ≈ 200 (X 1500, 4000, 8000, 11500); (5700, 3400) | Slack'te: deniz kenarındakiler her zaman (Scuttler suda doğar, kuru kumsalı geçer). Flood'da: su çizgisinin en çok 800 cm gerisindeki su altı nokta | Su yüzeyinde köpük + tıkırtı, 1,5 sn |
+| Drift **D-Low** ×5 | Deniz kenarı ×4, iskele altı ×1 | Y ≈ 200 (X 1500, 4000, 8000, 11500); (5700, 3400) | Deniz kenarındakiler **her zaman** (slack'te kuru kumsalı geçer; flood'da su altında doğup suyun içinden gelir: Y 200'den deniz duvarına en çok ~58 m, ıslak hızla ~12 sn). İskele altı: yalnız nokta su altındayken. (R3: "su çizgisinin 800 cm gerisi" kuralı kaldırıldı, §5.1.1) | Su yüzeyinde köpük + tıkırtı, 1,5 sn |
 | Drift **D-Half** ×4 | Yol kenarı menfez ızgaraları | Y ≈ 6200 (X 800, 5000, 7800, 11200) | Su Z ≥ 350 (7:13'ten sonra) | Izgaradan su fışkırır, 1,5 sn |
 | Drift **D-High** ×4 | Teras olukları | Y ≈ 10400 (X 500, 4500, 8300, 11500) | Su Z ≥ 750 (9:23'ten sonra) | Aynı |
 | Warden **W-Half** ×4 | Bina cephesindeki kulübe/kepenk kapıları | Y ≈ 7600 cephesi (X 1000, 4100, 8200, 11000) | Nokta kuru (Su Z < 400) | Kepenk gürültüsü, 1,5 sn |
 | Warden **W-High** ×3 | Otel kapıları | Y ≈ 13600 (X 1000, 6000, 11000) | Her zaman (teras 30 cm'de kalır; d < 100) | Aynı |
 
-Kural: doğuş noktası oyunculardan en az 1500 cm uzakta ve görüş hattı dışında olanlardan seçilir; uygun nokta yoksa dalga 5 sn ertelenir. Drift noktaları her zaman oyuncunun **aşağısında/arkasında**, Warden noktaları **yukarısında/önünde** kalır: "arada kalma" düzeni haritadan gelir, betikten değil.
+Kural: doğuş noktası oyunculardan en az 1500 cm uzakta olanlardan seçilir. **Görüş hattı dışında olma koşulu yalnız Warden noktalarına uygulanır; Drift noktalarında aranmaz** (R3, ilk playtest'ten önce şart). Gerekçe: deniz kenarı noktaları açık kumsaldadır; iskele güvertesinden ya da kumsaldan denize bakan oyuncular (4 kişide neredeyse her zaman) hepsini görür, dalga doğamaz ve 5:00'teki su çizgisi dalgası sessizce düşer. Scuttler'ın sudan görünerek çıkması zaten fantezidir ("suyla gelir"); ani belirme 1,5 sn'lik köpük telgrafıyla örtülür. Uygun nokta yoksa dalga 5 sn ertelenir, **en çok 3 kez** denenir (15 sn), sonra atlanır (R3: yer tutucu 6 → 3). Gerekçe: flood'da dalgalar 20 sn arayladır; 30 sn bekleyen dalga bir sonrakinin üstüne biner ve çift dalga üretir. Atlanan her dalga loglanır (§1.5). Drift noktaları her zaman oyuncunun **aşağısında/arkasında**, Warden noktaları **yukarısında/önünde** kalır: "arada kalma" düzeni haritadan gelir, betikten değil.
 
 ### 7.6 Siper yerleşim ilkeleri
 
@@ -668,7 +707,7 @@ Kural: doğuş noktası oyunculardan en az 1500 cm uzakta ve görüş hattı dı
 |---|---|---|
 | 0:05 | — | 2 (terasta, önceden yerleşik) |
 | 0:20 | 2 (W-High) | — |
-| 1:00 (ilk oyuncu Half'a basınca, en geç 1:15) | 2 (W-Half) | 3 (Half'ta, önceden yerleşik) |
+| 1:00 (sabit zaman; R3: "ilk oyuncu Half'a basınca" tetiği kaldırıldı) | 2 (W-Half; nokta 1:01'de kuruduğu için ilk yeniden denemede, ~1:05'te doğar) | 3 (Half'ta, önceden yerleşik) |
 | 2:20, 3:00, 3:40, 4:20 | — | 2'şer (D-Low deniz kenarı) = 8 |
 | 2:30 | 2 (kumsala iner) | — |
 | 3:30 | 2 (iskele güvertesi) | — |
@@ -704,7 +743,7 @@ Sıra önceliktir. Her turda **en çok iki değer** değiştirilir; değişiklik
 | 7 | Scuttler canlı tavanı ve dalga büyüklüğü (solo taban; M eğimi 0,6) | 6 · dalga 2–6 · 0,6 | tavan 4–10 · eğim 0,4–0,8 | Solo ezilirse taban ↓; 4 kişide boşluk varsa eğim ↑ |
 | 8 | Attendant yaylım hasarı ve ateş token'ı | 3 × 10 · 2/3/4/4 | 8–14 · ±1 | Yukarısı duvar gibiyse ↓; Attendant yok sayılıyorsa ↑ |
 | 9 | High Water yüksekliği | 830 (terasta 30) | 790–860 | 790 = teras kuru (final kolay, Scuttler kurur); 860 = oyuncu dizde (final sert). Slack High puanına göre |
-| 10 | Kota ve dolap açma süresi | N + 1 · 15 sn | N…N+2 · 8–25 | Flood başlamadan iş bitiyorsa kota ↑ ya da süre ↑; kimse kotaya yetişemiyorsa ↓ |
+| 10 | Kota (dolap açma süresi: dolap ertelendi, §6.4) | N + 1 · (15 sn) | N…N+2 · (8–25) | Flood başlamadan iş bitiyorsa kota ↑; kimse kotaya yetişemiyorsa ↓. Kota +1 yetmezse dolap yazılır |
 
 Bu ondan sonra sırada bekleyenler (ilk tur verisi gerektirirse): Purser hasarı (50), Gaffer tam hasar menzili (7 m), Parched süresi (20 sn), yenilenme tavanı (50), Slack Low uzunluğu (SL2 60 sn).
 
@@ -787,3 +826,49 @@ Kaynak: [weapon-character-specs.md](../art/weapon-character-specs.md) §10 ve [s
 | 10c | Siper sınıfları (§7.6, §7.3) | Tanımsız; iskelede "korkuluk (alçak siper)" | Dolu parapet = alçak siper; açık korkuluk = siper değil, mermi geçirir; kiosk ve oyun makinesi = tam siper; iskele kenarı dolu parapet | Environment-artist sorusu |
 
 **Bağlı tabloların denetimi:** bu revizyonda hasar, can, RPM, hareket hızı, su eğrisi ve harita koordinatı **değişmedi**. §4.5 TTK tablosu (Kedge 40 hasar / 0,60 aralık aynı), §3.2 hesaplanmış anlar, §6.1 ölüm süresi ve §7.4 rota süreleri yeniden gözden geçirildi; hiçbir satır değişmiyor. Savurma sırasındaki ateş kilidi sürekli hasar rakamlarını (Purser 125, Kedge 67 can/sn) değiştirmez; yalnız ikisinin toplanamayacağını kesinleştirir.
+
+---
+
+## 13. Revizyon 3 (25 Kasım 2026) — kod incelemesi sonrası: yer tutucular ve sapmalar
+
+Kaynak: [prototype-setup.md](../tech/prototype-setup.md) §5 (developer yer tutucuları) ve §8 (yapılmayanlar, bilinen sınırlar); `Source/NewFPS/` okuması. **Kod henüz derlenmedi ve oynanmadı:** aşağıdaki kararlar kâğıt ve kod okumasına dayanır, hiçbiri gözlem değildir; hepsi başlangıç değeridir.
+
+### 13.1 Yer tutucular
+
+| # | Madde | Karar | Gerekçe | Developer'a iş |
+|---|---|---|---|---|
+| P1 | Gaffer'ın Scuttler'ı itmesi: eşik 45 hasar / 120 cm (§5.1) | **Onay** | 45 = 3 saçma. Purser gövde atışının (50) da itmesi bilerek kabul edildi; Kedge (200) üstün kalır | Yok |
+| P2 | Attendant ilk yaylım ıskalama açısı 6° (§5.2) | **Onay**, yatay olması koşuluyla | 12 m'de 126 cm: görünür ıskalama, kapsüle değmez | Yok (yön yataysa) |
+| P3 | Shove bekleme 1,5 sn; isabet payı 40 cm (§5.2) | **Onay**; toparlanma bitiminden sayılır | Döngü 2,4 sn; zincirleme itme olmaz | Yok |
+| P4 | Spare line itme mesafesi 300 cm (§6.3) | **Onay** | 2 sn dokunulmazlıkla bir siper adımı | Yok |
+| P5 | Dalga yeniden deneme sayısı 6 (§7.5) | **3'e indirildi** | 6 × 5 sn = 30 sn, 20 sn'lik dalga aralığını aşar ve çift dalga üretir | Varsayılan değer: `MaxRetries` 3 |
+| P6 | Diğerleri: Lunge isabet toparlanması 0,4; yer değiştirme yarıçapı 800; geri çekilme arama yarıçapı 3000; Flood Drill düşman mesafesi 1200–2500 | **Onay** | Tercih menzili ve harita ölçüsüyle uyumlu | Yok |
+
+### 13.2 Sapmalar
+
+| # | Madde | Karar | Gerekçe | Developer'a iş |
+|---|---|---|---|---|
+| S1 | Hız sürekli; koşu kesilmesi ve zıplama kapanması basamaklı (§3.3) | **Kabul** | Sürekli hız lastik bandı önler; yetenek kilidi açık/kapalı okunmalı. Diz bandı spec'ten sertleşti (d 75'te ×0,625), tabloya işlendi | Yok |
+| S2 | Taşırken silah değiştirme tuşu yalnız bırakır (§2.3) | **Kabul** | Spec zaten bırakmayı bu tuşa bağlıyordu; tek tuş tek iş | Yok |
+| S3 | Teslim anında sayılır, geri alınamaz (§6.4) | **Kabul**; spec değişti | "Çıkışta sayma" prototipte karar üretmiyordu; anlık sayaç daha okunaklı | Yok |
+| S4 | Scuttler: ölmeyen her isabet telgrafı iptal eder (§5.1) | **Kabul**; spec değişti | Daha okunaklı, güç fantezisine uygun; iki isabette ölen düşmanda dengeye etkisi küçük | Yok |
+| S5a | Attendant: suya gönüllü girmeme yok; geri çekilme tek en yüksek noktaya (§5.2, §5.2.1) | **Reddedildi: asgari davranış ilk playtest'ten önce şart** | Bu hâliyle Attendant kendiliğinden kısa devre yapar; kanca oyuncu kararı olmaktan çıkar, Ölçüt 4 ölçülemez | **Var:** §5.2.1 K1–K4 (hedef süzgeci `AvoidDepth` 40, kaçış, geri çekilme hedefi `MinRetreatGain` 50 zeminden zemine + rastgele seçim, `NoRetreatFloorZ` 750) |
+| S5b | Attendant: siper yok (rastgele yer değiştirme), diz kırma, devriye, "Loitering" baskısı, nav maliyeti yok | **Ertelendi** (prototipten sonra) | Suyla ilişkiyi değiştirmez; yukarıyı kolaylaştırır, §9 #8 ile dengelenir | Yok |
+| S6a | Scuttler: yolu sudan seçmez (§5.1.1) | **Ertelendi** (prototipten sonra) | Drift–su bağı durumla taşınır (hız, yenilenme, Lunge, Parched, doğuş); hepsi kodda var | Yok |
+| S6b | Doğuş: "su çizgisinin 800 cm gerisi" ve "ilk oyuncu Half'a basınca" kuralları (§7.5, §8.2) | **Kabul; iki kural spec'ten kaldırıldı** | İlki sabit noktalarla tutmuyordu (6:00 ve 6:20 dalgaları doğamazdı); ikincisi sonucu değiştirmiyor | Yok |
+| S6c | (Yeni, S6 incelemesinde bulundu) Görüş hattı koşulu Drift noktalarını da kapsıyor (§7.5) | **Değişti: Drift için aranmaz** | Açık kumsalda deniz kenarı noktaları hep görünür; 5:00 dalgası düşebilir. Derlenmedi: ilk Flood Drill'de atlanan dalga loguyla doğrulanır | **Var:** görüş hattı koşulunu fraksiyona (ya da noktaya) bağla; atlanan dalgayı logla. Yapılamazsa geçici çare: `bRequireOutOfSight` = false |
+| S7a | İlk yardım kutusu (§6.1) ve mermi sandığı aktörü (§4.2, §7.3) | **Şart** (tam döngü playtest'inden önce) | Kutu yoksa oyuncu yarım canla oynar; sandık yoksa Gaffer 36 fişekle flood ortasında biter. İkisi de ölçütlerin varsayımı | **Var:** tek "ikmal noktası" aktörü, iki ayar (can: 1,5 sn tut, kullanım = oyuncu sayısı; mermi: sınırsız, `AuthAddReserveAmmo`) |
+| S7b | Coyote time / jump buffer (§2.2) | **Ertelendi** (ilk turdan sonra, dış oyunculu oturumdan önce) | Zorunlu atlama yok | Yok |
+| S7c | Koşudan ateşe 0,20 sn gecikme (§2.2) | **Ertelendi**; prototip değeri 0 | Duyarlı sürüm önce denenir | Yok |
+| S7d | Kilitli dolap (§6.4) | **Ertelendi** (ilk tur verisine göre) | Çekirdek soru flood'dadır; önce kota ayarı | Yok |
+| S7e | Vinç hattına kancalanma (§6.4) | **Ertelendi**; görev 12:00'de biter | Yalnız erken bitirme sağlar | Yok |
+
+### 13.3 İlk playtest'ten önce developer'ın yapması şart olanlar
+
+1. **Attendant su davranışı** — §5.2.1 K1–K4.
+2. **Drift doğuşunda görüş hattı istisnası** + `MaxRetries` 3 + atlanan dalga logu — §7.5.
+3. **İkmal noktası** (ilk yardım + mermi) — §6.1, §4.2. Yalnız Flood Drill oturumları bu olmadan yapılabilir.
+
+Bu revizyonun kararı olmayan ama aynı listeye ait, spec'te zaten şart koşulmuş iki eksik (§1.2): **telgraf sesleri** (Scuttler klak/tıslama, Attendant klik-klak, kepenk, çan, su uğultusu — "sessiz prototip yanlış sonuç verir") ve **telemetri CSV** (§1.5; en azından düşme nedeni, kısa devre ayrımı, atlanan dalga). Bunlar olmadan oturum oynanabilir ama §1.4 ölçütlerine sayılmaz.
+
+**Bağlı tabloların denetimi:** hasar, can, RPM, su eğrisi ve harita koordinatı değişmedi; §4.5 TTK tablosu ve §3.2 hesaplanmış anlar aynı. Değişen türetilmiş değerler: diz bandında hız (§3.3; §7.4'teki "~70 sn gecikmeyle rampa dibi bel suyunda" okuması geçerli, diz evresi biraz daha yavaş), §8.2'de 1:00 Warden dalgasının fiilî doğuşu (~1:05). §8.1'deki 10:30–12:00 satırındaki "Kancalan" adımı S7e gereği ilk playtest'te yoktur.
